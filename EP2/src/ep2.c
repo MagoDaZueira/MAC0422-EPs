@@ -158,6 +158,7 @@ void free_array(DynamicArray *arr) {
 #define VOLTAS_MAX 25005
 #define FAIXAS 10
 #define POS_VAZIA -1
+#define TEMPO_ESPERA 100000
 
 /* ===============================================================
    =========================== STRUCTS ===========================
@@ -168,7 +169,6 @@ typedef struct Ciclista {
     int tempo_volta;
     int volta;
     int esta_morto;
-    int quebrou;
     int id;
     pthread_t thread;
 } Ciclista;
@@ -196,6 +196,7 @@ int** moveu;
 
 int threads_aguardando = 0;
 
+// pthread_mutex_t lock_inicio = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_coordenador = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_ciclistas = PTHREAD_COND_INITIALIZER;
 pthread_cond_t cond_coordenador = PTHREAD_COND_INITIALIZER;
@@ -203,9 +204,9 @@ pthread_cond_t cond_coordenador = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t** lock_posicoes;
 pthread_mutex_t lock_pista = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_quebra = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock_volta = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_pista = PTHREAD_COND_INITIALIZER;
-// pthread_barrier_t barr_move;
-
+pthread_barrier_t barr_move;
 
 /* ===============================================================
    ===================== FUNÇÕES CONCORRENTES ====================
@@ -216,45 +217,45 @@ void move_ciclista(Ciclista* cic, int x, int y) {
     pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
     pista[x][y] = cic->id;
     cic->pos_x = x;
+    cic->pos_y = y;
 }
 
 void* ciclista(void* arg) {
     Ciclista* self = (Ciclista*)arg;
     int velocidade = 0;
     int recarga = 0;
-    unsigned int seed = time(NULL) ^ (uintptr_t)pthread_self();
+    unsigned int seed = time(NULL) ^ (unsigned int)pthread_self();
     int rng;
     int next_x;
+
+    pthread_mutex_lock(&lock_coordenador);
+    pthread_mutex_unlock(&lock_coordenador);
     while (1) {
         next_x = (self->pos_x + 1) % metros;
-        if ((recarga >= 1 && velocidade == 1) || (recarga >= 2 && velocidade == 0)) {
+        if ((recarga >= 0 && velocidade == 1) || (recarga >= 1 && velocidade == 0)) {
             if (modo == 'i') {
                 pthread_mutex_lock(&lock_pista);
                 if (pista[next_x][self->pos_y] == POS_VAZIA) {
                     move_ciclista(self, next_x, self->pos_y);
                 } 
                 else {
-                    if (!moveu[next_x][self->pos_y]) {
+                    while (!moveu[next_x][self->pos_y]) {
                         pthread_cond_wait(&cond_pista, &lock_pista);
                     }
-                    int y = self->pos_y;
-                    while (y < FAIXAS && pista[next_x][y] != POS_VAZIA) {
-                        if (pista[self->pos_x][y] == POS_VAZIA) {
-                            y++;
-                            continue;
-                        }
-                        if (!moveu[self->pos_x][y]) {
-                            pthread_cond_wait(&cond_pista, &lock_pista);
+                    
+                    int conseguiu = 0;
+                    for (int y = self->pos_y; y < FAIXAS; y++) {
+                        if (y != self->pos_y && !moveu[self->pos_x][y]) {
+                            while(!moveu[self->pos_x][y]) pthread_cond_wait(&cond_pista, &lock_pista);
                             if (pista[self->pos_x][y] != POS_VAZIA) break;
                         }
+                        if (pista[next_x][y] == POS_VAZIA) {
+                            move_ciclista(self, next_x, y);
+                            conseguiu = 1;
+                            break;
+                        }
                     }
-
-                    if (pista[next_x][y] == POS_VAZIA) {
-                        move_ciclista(self, next_x, y);
-                    }
-                    else {
-                        moveu[self->pos_x][self->pos_y] = 1;
-                    }
+                    if (!conseguiu) moveu[self->pos_x][self->pos_y] = 1;
                 }
             }
 
@@ -266,33 +267,37 @@ void* ciclista(void* arg) {
         }
 
         if (modo == 'i') {
+            // printf("ratinho\n");
             pthread_cond_broadcast(&cond_pista);
             pthread_mutex_unlock(&lock_pista);
         }
 
-        // pthread_barrier (antes da segunda parte do movimento)
+        pthread_barrier_wait(&barr_move);
 
         moveu[self->pos_x][self->pos_y] = 0;
         if (modo == 'i') {
-            int y = self->pos_y;
             pthread_mutex_lock(&lock_pista);
-            while (y >= 0 && !(pista[self->pos_x][self->pos_y] != POS_VAZIA && moveu[self->pos_x][self->pos_y])) {
-                if (pista[self->pos_x][y] == POS_VAZIA) {
+            int y = self->pos_y;
+            while (y > 0 && !(pista[self->pos_x][y-1] != POS_VAZIA && moveu[self->pos_x][y-1])) {
+                if (pista[self->pos_x][y-1] == POS_VAZIA) {
                     y--;
                     continue;
                 }
-                if (!moveu[self->pos_x][y]) {
-                    pthread_cond_wait(&cond_pista, &lock_pista);
+                if (!moveu[self->pos_x][y-1]) {
+                    while (!moveu[self->pos_x][y-1]) pthread_cond_wait(&cond_pista, &lock_pista);
                     if (pista[self->pos_x][y] != POS_VAZIA) break;
                 }
             }
+            move_ciclista(self, self->pos_x, y);
             pthread_cond_broadcast(&cond_pista);
             pthread_mutex_unlock(&lock_pista);
         }
 
         if (self->pos_x == 0 && next_x == self->pos_x) {
+            pthread_mutex_lock(&lock_volta);
             acabaram_volta[self->volta]++;
             append(&ultimos_da_volta[self->volta], self);
+            pthread_mutex_unlock(&lock_volta);
             self->tempo_volta = tempo;
             self->volta++;
 
@@ -307,6 +312,8 @@ void* ciclista(void* arg) {
                 pthread_mutex_unlock(&lock_quebra);
             }
         }
+
+        // printf("Ciclista\n");
 
         pthread_mutex_lock(&lock_coordenador);
         threads_aguardando++;
@@ -331,6 +338,7 @@ void destruir_ciclistas() {
         int escolhido = rand() % acabaram_volta[volta_par];
         ciclistas[escolhido]->esta_morto = 1;
         vivos--;
+        push(ranking, ciclistas[escolhido]);
         pthread_cancel(ciclistas[escolhido]->thread);
         volta_par += 2;
     }
@@ -360,12 +368,14 @@ void resultados_finais() {
 }
 
 void mostrar_debug() {
-    for (int faixa = 0; faixa < FAIXAS; faixa++) {
+    // printf("slk\n");
+    // return;
+    for (int faixa = FAIXAS-1; faixa >= 0; faixa--) {
         for (int i = metros - 1; i >= 0; i--) {
             if (pista[i][faixa] == POS_VAZIA)
-                printf("%5s", ".");
+                printf("%3s", ".");
             else
-                printf("%5d", pista[i][faixa]);
+                printf("%3d", pista[i][faixa]);
         }
         printf("\n");
     }
@@ -416,30 +426,74 @@ void mostrar_informacoes() {
 //     }
 // }
 
+void gerar_ordem_aleatoria(int* vetor, int n) {
+    for (int i = 0; i < n; i++) {
+        vetor[i] = i;
+    }
+
+    for (int i = n - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int temp = vetor[i];
+        vetor[i] = vetor[j];
+        vetor[j] = temp;
+    }
+}
+
+void posicoes_iniciais() {
+    int* ordem = malloc(num_ciclistas * sizeof(int));
+    gerar_ordem_aleatoria(ordem, num_ciclistas);
+    for (int i = 0; i < num_ciclistas; i++) {
+        int x = ordem[i] / 5;
+        int y = ordem[i] % 5;
+        ciclistas[i]->pos_x = x;
+        ciclistas[i]->pos_y = y;
+        pista[x][y] = ciclistas[i]->id;
+    }
+}
+
+void zera_moveu() {
+    for (int i = 0; i < metros; i++) {
+        for (int j = 0; j < FAIXAS; j++) {
+            moveu[i][j] = 0;
+        }
+    }
+}
 
 void coordenador() {
-    return;
+    pthread_mutex_lock(&lock_coordenador);
+    posicoes_iniciais();
+    mostrar_debug();
+    
     for (int i = 0; i < num_ciclistas; i++) {
         pthread_t thread;
         pthread_create(&thread, NULL, ciclista, ciclistas[i]);
     }
+
+    pthread_barrier_init(&barr_move, NULL, vivos);
     while (vivos >= 2) {
-        pthread_mutex_lock(&lock_coordenador);
+        printf("loop\n");
+        pthread_barrier_destroy(&barr_move);
+        pthread_barrier_init(&barr_move, NULL, vivos);
+        
+        zera_moveu();
+        // pthread_mutex_lock(&lock_coordenador);
         pthread_cond_broadcast(&cond_ciclistas);
         while (threads_aguardando < vivos) {
             pthread_cond_wait(&cond_coordenador, &lock_coordenador);
         }
         threads_aguardando = 0;
-        pthread_mutex_unlock(&lock_coordenador);
+        // pthread_mutex_unlock(&lock_coordenador);
 
         destruir_ciclistas();
 
-        usleep(60);
+        usleep(TEMPO_ESPERA);
         tempo += 60;
 
         if (debug) mostrar_debug();
         else       mostrar_informacoes();
     }
+
+    pthread_mutex_unlock(&lock_coordenador);
 
     for (int i = 0; i < num_ciclistas; i++) {
         if (!ciclistas[i]->esta_morto) {
@@ -466,9 +520,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_ciclistas; i++) {
         ciclistas[i] = malloc(sizeof(Ciclista));
         ciclistas[i]->esta_morto = 0;
-        ciclistas[i]->pos_x = 0;
         ciclistas[i]->volta = 0;
-        ciclistas[i]->quebrou = 0;
         ciclistas[i]->id = i;
     }
 
@@ -496,6 +548,7 @@ int main(int argc, char *argv[]) {
 
     ranking = new_stack();
     voltas_a_imprimir = new_stack();
+    quebrados_temp = new_stack();
 
     coordenador();
 
