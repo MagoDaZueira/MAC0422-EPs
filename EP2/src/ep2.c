@@ -16,8 +16,8 @@ EXERCÍCIO-PROGRAMA: EP2
 #include <time.h>
 
 /* ===============================================================
-   ===================== IMPLEMENTAÇÃO QUEUE =====================
-   =============================================================== */
+    ===================== IMPLEMENTAÇÃO QUEUE =====================
+    =============================================================== */
 typedef struct Node {
     void *data;
     struct Node *next;
@@ -78,8 +78,8 @@ typedef struct {
 } Stack;
 
 /* ===============================================================
-   ===================== IMPLEMENTAÇÃO STACK =====================
-   =============================================================== */
+    ===================== IMPLEMENTAÇÃO STACK =====================
+    =============================================================== */
 Stack* new_stack() {
     Stack *s = (Stack*)malloc(sizeof(Stack));
     s->top = NULL;
@@ -113,8 +113,8 @@ void* top(Stack *s) {
 }
 
 /* ===============================================================
-   ======================= ARRAY DINÂMICO ========================
-   =============================================================== */
+    ======================= ARRAY DINÂMICO ========================
+    =============================================================== */
 typedef struct {
     void **data;
     size_t size;
@@ -153,16 +153,16 @@ void free_array(DynamicArray *arr) {
 }
 
 /* ===============================================================
-   =========================== DEFINES ===========================
-   =============================================================== */
+    =========================== DEFINES ===========================
+    =============================================================== */
 #define VOLTAS_MAX 25005
 #define FAIXAS 10
 #define POS_VAZIA -1
-#define TEMPO_ESPERA 10000
+#define TEMPO_ESPERA 20000
 
 /* ===============================================================
-   =========================== STRUCTS ===========================
-   =============================================================== */
+    =========================== STRUCTS ===========================
+    =============================================================== */
 typedef struct Ciclista {
     int pos_x;
     int pos_y;
@@ -174,8 +174,8 @@ typedef struct Ciclista {
 } Ciclista;
 
 /* ===============================================================
-   ====================== VARIÁVEIS GLOBAIS ======================
-   =============================================================== */
+    ====================== VARIÁVEIS GLOBAIS ======================
+    =============================================================== */
 int metros;
 int num_ciclistas;
 char modo;
@@ -195,6 +195,7 @@ Stack* quebrados_temp;
 Stack* ranking;
 Stack* voltas_a_imprimir;
 Stack* voltas_do_turno;
+int todos_da_faixa[FAIXAS];
 
 int** moveu;
 
@@ -211,10 +212,11 @@ pthread_mutex_t lock_quebra = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_volta = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_pista = PTHREAD_COND_INITIALIZER;
 pthread_barrier_t barr_move;
+pthread_mutex_t lock_faixa[FAIXAS];
 
 /* ===============================================================
-   ===================== FUNÇÕES CONCORRENTES ====================
-   =============================================================== */
+    ===================== FUNÇÕES CONCORRENTES ====================
+    =============================================================== */
 
 void move_ciclista(Ciclista* cic, int x, int y) {
     moveu[cic->pos_x][cic->pos_y] = 1;
@@ -232,14 +234,51 @@ void* ciclista(void* arg) {
     unsigned int seed = time(NULL) ^ (unsigned int)pthread_self();
     int rng;
     int next_x;
+    int vai_mover;
+    int x_velho;
+    int ja_moveu;
 
     pthread_mutex_lock(&lock_coordenador);
     pthread_mutex_unlock(&lock_coordenador);
     while (1) {
+        ja_moveu = 0;
+        vai_mover = velocidade == 1 || (recarga >= 1 && velocidade == 0);
+        x_velho = self->pos_x;
         next_x = (self->pos_x + 1) % metros;
-        if (modo == 'i') pthread_mutex_lock(&lock_pista);
 
-        if ((recarga >= 0 && velocidade == 1) || (recarga >= 1 && velocidade == 0)) {
+        // printf("[%d] velocidade: %d\n", self->id, velocidade);
+        
+        pthread_mutex_lock(&lock_faixa[self->pos_y]);
+        todos_da_faixa[self->pos_y] = todos_da_faixa[self->pos_y] && vai_mover;
+        pthread_mutex_unlock(&lock_faixa[self->pos_y]);
+
+        pthread_barrier_wait(&barr_move);
+
+        // if (self->id == 0) {
+        //     for (int i = 0; i < FAIXAS; i++) {
+        //         printf("faixa %d: %d\n", i, todos_da_faixa[i]);
+        //     }
+        // }
+
+        if (modo == 'i') pthread_mutex_lock(&lock_pista);
+        if (todos_da_faixa[self->pos_y]) {
+            moveu[self->pos_x][self->pos_y] = 1;
+            moveu[next_x][self->pos_y] = 1;
+            pista[next_x][self->pos_y] = self->id;
+            self->pos_x = next_x;
+            ja_moveu = 1;
+            recarga = 0;
+        }
+        if (modo == 'i') pthread_mutex_unlock(&lock_pista);
+
+        pthread_barrier_wait(&barr_move);
+        if (pista[x_velho][self->pos_y] == self->id && x_velho != self->pos_x) {
+            pista[x_velho][self->pos_y] = POS_VAZIA;
+        }
+        pthread_barrier_wait(&barr_move);
+
+        if (modo == 'i') pthread_mutex_lock(&lock_pista);
+        if (vai_mover && !ja_moveu) {
             if (modo == 'i') {
                 if (pista[next_x][self->pos_y] == POS_VAZIA) {
                     // printf("[%d] direto\n", self->id);;
@@ -273,8 +312,10 @@ void* ciclista(void* arg) {
         }
         else {
             moveu[self->pos_x][self->pos_y] = 1;
-            recarga++;
+            // recarga++;
         }
+
+        if (!vai_mover) recarga++;
 
         if (modo == 'i') {
             // printf("[%d] barreira\n", self->id);
@@ -355,8 +396,8 @@ void* ciclista(void* arg) {
 }
 
 /* ===============================================================
-   ==================== FUNÇÕES COORDENADORAS ====================
-   =============================================================== */
+    ==================== FUNÇÕES COORDENADORAS ====================
+    =============================================================== */
 int volta_par = 2;
 void destruir_ciclistas() {
     while (!is_stack_empty(quebrados_temp)) {
@@ -366,7 +407,6 @@ void destruir_ciclistas() {
         pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
         vivos--;
         append(&quebrados, cic);
-        // pthread_cancel(cic->thread);
         pop(quebrados_temp);
     }
     while (acabaram_volta[volta_par] >= vivos) {
@@ -390,7 +430,6 @@ void destruir_ciclistas() {
         pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
         vivos--;
         push(ranking, cic);
-        // pthread_cancel(cic->thread);
         volta_par += 2;
     }
 }
@@ -493,11 +532,14 @@ void posicoes_iniciais() {
     }
 }
 
-void zera_moveu() {
+void zera_vetores() {
     for (int i = 0; i < metros; i++) {
         for (int j = 0; j < FAIXAS; j++) {
             moveu[i][j] = 0;
         }
+    }
+    for (int i = 0; i < FAIXAS; i++) {
+        todos_da_faixa[i] = 1;
     }
 }
 
@@ -526,7 +568,7 @@ void coordenador() {
         pthread_barrier_destroy(&barr_move);
         pthread_barrier_init(&barr_move, NULL, vivos);
         
-        zera_moveu();
+        zera_vetores();
         pthread_cond_broadcast(&cond_ciclistas);
         while (threads_aguardando < vivos) {
             pthread_cond_wait(&cond_coordenador, &lock_coordenador);
@@ -596,6 +638,10 @@ int main(int argc, char *argv[]) {
         ultimos_da_volta[i] = new_stack();
         // init_array(&ultimos_da_volta[i], 4);
         init_array(&ultimos_deste_turno[i], 4);
+    }
+
+    for (int i = 0; i < FAIXAS; i++) {
+        pthread_mutex_init(&lock_faixa[i], NULL);
     }
 
     ranking = new_stack();
