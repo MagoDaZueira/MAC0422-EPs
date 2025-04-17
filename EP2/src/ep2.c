@@ -319,6 +319,9 @@ void* ciclista(void* arg) {
         pthread_barrier_wait(&barr_move);
 
         moveu[self->pos_x][self->pos_y] = 0;
+
+        pthread_barrier_wait(&barr_move);
+
         if (modo == 'i') {
             pthread_mutex_lock(&lock_pista);
             int y = self->pos_y;
@@ -328,7 +331,7 @@ void* ciclista(void* arg) {
                     continue;
                 }
                 while (!moveu[self->pos_x][y-1]) pthread_cond_wait(&cond_pista, &lock_pista);
-                if (pista[self->pos_x][y] != POS_VAZIA) break;
+                // if (pista[self->pos_x][y-1] != POS_VAZIA) break;
             }
             move_ciclista(self, self->pos_x, y);
             pthread_cond_broadcast(&cond_pista);
