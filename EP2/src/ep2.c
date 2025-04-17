@@ -152,6 +152,13 @@ void free_array(DynamicArray *arr) {
     arr->size = arr->capacity = 0;
 }
 
+void copy_dynamic(DynamicArray* from, DynamicArray* to) {
+    clear_array(to);
+    for (int i = 0; i < from->size; i++) {
+        append(to, from->data[i]);
+    }
+}
+
 /*  ===============================================================
     =========================== DEFINES ===========================
     =============================================================== */
@@ -186,7 +193,6 @@ int vivos;
 int** pista;
 Ciclista** ciclistas;
 int acabaram_volta[VOLTAS_MAX];
-// DynamicArray ultimos_da_volta[VOLTAS_MAX];
 Stack* ultimos_da_volta[VOLTAS_MAX];
 int ultima_alteracao_ultimos[VOLTAS_MAX];
 DynamicArray ultimos_deste_turno[VOLTAS_MAX];
@@ -246,8 +252,6 @@ void* ciclista(void* arg) {
         vai_mover = velocidade == 1 || (recarga >= 1 && velocidade == 0);
         x_velho = self->pos_x;
         next_x = (self->pos_x + 1) % metros;
-
-        // printf("[%d] velocidade: %d\n", self->id, velocidade);
         
         pthread_mutex_lock(&lock_faixa[self->pos_y]);
         todos_da_faixa[self->pos_y] = todos_da_faixa[self->pos_y] && vai_mover;
@@ -276,18 +280,14 @@ void* ciclista(void* arg) {
         if (vai_mover && !ja_moveu) {
             if (modo == 'i') {
                 if (pista[next_x][self->pos_y] == POS_VAZIA) {
-                    // printf("[%d] direto\n", self->id);;
                     move_ciclista(self, next_x, self->pos_y);
                 } 
                 else {
-                    // printf("[%d] esperando_1\n", self->id);
                     while (!moveu[next_x][self->pos_y]) {
                         pthread_cond_wait(&cond_pista, &lock_pista);
                     }
-                    // printf("[%d] esperando_2\n", self->id);
                     int conseguiu = 0;
                     for (int y = self->pos_y; y < FAIXAS; y++) {
-                        // if (y != self->pos_y && !moveu[self->pos_x][y]) {
                         if (y != self->pos_y && pista[self->pos_x][y] != POS_VAZIA) {
                             while (!moveu[self->pos_x][y]) pthread_cond_wait(&cond_pista, &lock_pista);
                             if (pista[self->pos_x][y] != POS_VAZIA) break;
@@ -299,7 +299,6 @@ void* ciclista(void* arg) {
                         }
                     }
                     if (!conseguiu) moveu[self->pos_x][self->pos_y] = 1;
-                    // printf("[%d] passou\n", self->id);
                 }
             }
 
@@ -312,7 +311,6 @@ void* ciclista(void* arg) {
         if (!vai_mover) recarga++;
 
         if (modo == 'i') {
-            // printf("[%d] barreira\n", self->id);
             pthread_cond_broadcast(&cond_pista);
             pthread_mutex_unlock(&lock_pista);
         }
@@ -385,8 +383,6 @@ void* ciclista(void* arg) {
         }
         pthread_mutex_unlock(&lock_coordenador);
 
-        // printf("[%d] fim\n", self->id);
-
         if (self->esta_morto) break;
     }
 
@@ -396,6 +392,7 @@ void* ciclista(void* arg) {
 /*  ===============================================================
     ==================== FUNÇÕES COORDENADORAS ====================
     =============================================================== */
+
 int volta_par = 2;
 void destruir_ciclistas() {
     while (!is_stack_empty(quebrados_temp)) {
@@ -408,39 +405,50 @@ void destruir_ciclistas() {
         pop(quebrados_temp);
     }
     while (acabaram_volta[volta_par] >= vivos && vivos > 1) {
-        DynamicArray validos; init_array(&validos, 8);
+        DynamicArray* validos = malloc(sizeof(DynamicArray)); init_array(validos, 8);
         while (!is_stack_empty(ultimos_da_volta[volta_par])) {
             int valido = 0;
             DynamicArray* ultimos = (DynamicArray*)top(ultimos_da_volta[volta_par]);
             for (unsigned int i = 0; i < ultimos->size; i++) {
                 if (!((Ciclista*)ultimos->data[i])->esta_morto) {
+                    printf("achou\n");
                     valido = 1;
-                    pop(ultimos_da_volta[volta_par]);
                     break;
                 }
             }
+            pop(ultimos_da_volta[volta_par]);
             if (!valido) {
-                pop(ultimos_da_volta[volta_par]);
                 continue;
             }
-            if (valido) {
-                for (unsigned int i = 0; i < ultimos->size; i++) {
-                    if (!((Ciclista*)ultimos->data[i])->esta_morto) {
-                        append(&validos, (Ciclista*)ultimos->data[i]);
-                    }
+            for (unsigned int i = 0; i < ultimos->size; i++) {
+                if (!((Ciclista*)ultimos->data[i])->esta_morto) {
+                    append(validos, (Ciclista*)ultimos->data[i]);
                 }
-                break;
             }
+            break;
         }
-        int escolhido = rand() % validos.size;
-        Ciclista* cic = validos.data[escolhido];
+        int escolhido = rand() % validos->size;
+        Ciclista* cic = validos->data[escolhido];
         cic->esta_morto = 1;
         cic->volta--;
         pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
         vivos--;
         push(ranking, cic);
-        clear_array(&validos);
+        clear_array(validos);
         volta_par += 2;
+    }
+}
+
+void adiciona_ultimos_volta() {
+    while (!is_stack_empty(voltas_do_turno)) {
+        int volta = *(int*)top(voltas_do_turno);
+        if (volta < VOLTAS_MAX) {
+            DynamicArray* copia = malloc(sizeof(DynamicArray));
+            init_array(copia, 4);
+            copy_dynamic(&ultimos_deste_turno[volta], copia);
+            push(ultimos_da_volta[volta], copia);
+        }
+        pop(voltas_do_turno);
     }
 }
 
@@ -460,14 +468,24 @@ void resultados_finais() {
     }
 }
 
+int conta_espaco() {
+    int res = 1;
+    int temp = num_ciclistas;
+    while (temp > 0) {
+        res++;
+        temp /= 10;
+    }
+    return res;
+}
+int espaco;
 void mostrar_debug() {
     printf("\n");
     for (int faixa = FAIXAS-1; faixa >= 0; faixa--) {
         for (int i = metros - 1; i >= 0; i--) {
             if (pista[i][faixa] == POS_VAZIA)
-                printf("%3s", ".");
+                fprintf(stderr, "%*s", espaco, ".");
             else
-                printf("%3d", pista[i][faixa]);
+                fprintf(stderr, "%*d", espaco, pista[i][faixa]);
         }
         printf("\n");
     }
@@ -539,15 +557,10 @@ void zera_vetores() {
     }
 }
 
-void adiciona_ultimos_volta() {
-    while (!is_stack_empty(voltas_do_turno)) {
-        int volta = *(int*)top(voltas_do_turno);
-        push(ultimos_da_volta[volta], &ultimos_deste_turno[volta]);
-        pop(voltas_do_turno);
-    }
-}
 
 void coordenador() {
+    espaco = conta_espaco();
+
     pthread_mutex_lock(&lock_coordenador);
     posicoes_iniciais();
 
@@ -588,7 +601,6 @@ void coordenador() {
         if (!ciclistas[i]->esta_morto) {
             push(ranking, ciclistas[i]);
             ciclistas[i]->esta_morto = 1;
-            // pthread_cancel(ciclistas[i]->thread);
         }
     }
     resultados_finais();
@@ -634,7 +646,6 @@ int main(int argc, char *argv[]) {
     init_array(&quebrados, 16);
     for (int i = 0; i < VOLTAS_MAX; i++) {
         ultimos_da_volta[i] = new_stack();
-        // init_array(&ultimos_da_volta[i], 4);
         init_array(&ultimos_deste_turno[i], 4);
     }
 
