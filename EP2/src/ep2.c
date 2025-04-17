@@ -158,7 +158,7 @@ void free_array(DynamicArray *arr) {
 #define VOLTAS_MAX 25005
 #define FAIXAS 10
 #define POS_VAZIA -1
-#define TEMPO_ESPERA 20000
+#define TEMPO_ESPERA 60000
 
 /* ===============================================================
     =========================== STRUCTS ===========================
@@ -201,7 +201,6 @@ int** moveu;
 
 int threads_aguardando = 0;
 
-// pthread_mutex_t lock_inicio = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_coordenador = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_ciclistas = PTHREAD_COND_INITIALIZER;
 pthread_cond_t cond_coordenador = PTHREAD_COND_INITIALIZER;
@@ -253,12 +252,6 @@ void* ciclista(void* arg) {
         pthread_mutex_unlock(&lock_faixa[self->pos_y]);
 
         pthread_barrier_wait(&barr_move);
-
-        // if (self->id == 0) {
-        //     for (int i = 0; i < FAIXAS; i++) {
-        //         printf("faixa %d: %d\n", i, todos_da_faixa[i]);
-        //     }
-        // }
 
         if (modo == 'i') pthread_mutex_lock(&lock_pista);
         if (todos_da_faixa[self->pos_y]) {
@@ -354,8 +347,9 @@ void* ciclista(void* arg) {
                 }
             }
 
+            pthread_mutex_lock(&lock_volta);
+            push(voltas_a_imprimir, self);
             if (!quebrou) {
-                pthread_mutex_lock(&lock_volta);
                 int volta = self->volta;
                 acabaram_volta[volta]++;
                 if (ultima_alteracao_ultimos[volta] != tempo / 60) {
@@ -366,8 +360,8 @@ void* ciclista(void* arg) {
                 // append(&ultimos_da_volta[volta], self);
                 append(&ultimos_deste_turno[volta], self);
                 push(voltas_do_turno, &volta);
-                pthread_mutex_unlock(&lock_volta);
             }
+            pthread_mutex_unlock(&lock_volta);
 
             self->tempo_volta = tempo;
             self->volta++;
@@ -410,26 +404,38 @@ void destruir_ciclistas() {
         pop(quebrados_temp);
     }
     while (acabaram_volta[volta_par] >= vivos) {
+        DynamicArray validos; init_array(&validos, 8);
         while (!is_stack_empty(ultimos_da_volta[volta_par])) {
-            int valido = 1;
+            int valido = 0;
             DynamicArray* ultimos = (DynamicArray*)top(ultimos_da_volta[volta_par]);
             for (unsigned int i = 0; i < ultimos->size; i++) {
-                if (((Ciclista*)ultimos->data[i])->esta_morto) {
-                    valido = 0;
+                if (!((Ciclista*)ultimos->data[i])->esta_morto) {
+                    valido = 1;
                     pop(ultimos_da_volta[volta_par]);
                     break;
                 }
             }
-            if (valido) break;
+            if (!valido) {
+                pop(ultimos_da_volta[volta_par]);
+                continue;
+            }
+            if (valido) {
+                for (unsigned int i = 0; i < ultimos->size; i++) {
+                    if (!((Ciclista*)ultimos->data[i])->esta_morto) {
+                        append(&validos, (Ciclista*)ultimos->data[i]);
+                    }
+                }
+                break;
+            }
         }
-        DynamicArray* ultimos = (DynamicArray*)top(ultimos_da_volta[volta_par]);
-        int escolhido = rand() % ultimos->size;
-        Ciclista* cic = ultimos->data[escolhido];
+        int escolhido = rand() % validos.size;
+        Ciclista* cic = validos.data[escolhido];
         cic->esta_morto = 1;
         cic->volta--;
         pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
         vivos--;
         push(ranking, cic);
+        clear_array(&validos);
         volta_par += 2;
     }
 }
@@ -465,6 +471,8 @@ void mostrar_debug() {
 unsigned int indice_quebrados = 0;
 void mostrar_informacoes() {
     int mostrar_pos = 0;
+    if (!is_stack_empty(voltas_a_imprimir) || indice_quebrados < quebrados.size)
+        printf("\n");
     while (!is_stack_empty(voltas_a_imprimir)) {
         mostrar_pos = 1;
         Ciclista* proximo = (Ciclista*)top(voltas_a_imprimir);
@@ -484,7 +492,7 @@ void mostrar_informacoes() {
     if (indice_quebrados < quebrados.size) printf("Ciclistas que quebraram: ");
     while (indice_quebrados < quebrados.size) {
         printf("Ciclista %d", ((Ciclista*)quebrados.data[indice_quebrados++])->id);
-        indice_quebrados < quebrados.size ? printf("\n") : printf(" | ");
+        indice_quebrados < quebrados.size ? printf(" | ") : printf("\n");
     }
 }
 
@@ -554,7 +562,8 @@ void adiciona_ultimos_volta() {
 void coordenador() {
     pthread_mutex_lock(&lock_coordenador);
     posicoes_iniciais();
-    mostrar_debug();
+
+    if (debug) mostrar_debug();
     
     for (int i = 0; i < num_ciclistas; i++) {
         pthread_t thread;
@@ -564,7 +573,7 @@ void coordenador() {
 
     pthread_barrier_init(&barr_move, NULL, vivos);
     while (vivos >= 2) {
-        printf("loop\n");
+        // printf("loop\n");
         pthread_barrier_destroy(&barr_move);
         pthread_barrier_init(&barr_move, NULL, vivos);
         
@@ -590,7 +599,8 @@ void coordenador() {
     for (int i = 0; i < num_ciclistas; i++) {
         if (!ciclistas[i]->esta_morto) {
             push(ranking, ciclistas[i]);
-            pthread_cancel(ciclistas[i]->thread);
+            ciclistas[i]->esta_morto = 1;
+            // pthread_cancel(ciclistas[i]->thread);
         }
     }
     resultados_finais();
