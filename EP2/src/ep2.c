@@ -152,7 +152,7 @@ void free_array(DynamicArray *arr) {
     arr->size = arr->capacity = 0;
 }
 
-/* ===============================================================
+/*  ===============================================================
     =========================== DEFINES ===========================
     =============================================================== */
 #define VOLTAS_MAX 25005
@@ -160,7 +160,7 @@ void free_array(DynamicArray *arr) {
 #define POS_VAZIA -1
 #define TEMPO_ESPERA 60000
 
-/* ===============================================================
+/*  ===============================================================
     =========================== STRUCTS ===========================
     =============================================================== */
 typedef struct Ciclista {
@@ -173,7 +173,7 @@ typedef struct Ciclista {
     pthread_t thread;
 } Ciclista;
 
-/* ===============================================================
+/*  ===============================================================
     ====================== VARIÁVEIS GLOBAIS ======================
     =============================================================== */
 int metros;
@@ -193,9 +193,11 @@ DynamicArray ultimos_deste_turno[VOLTAS_MAX];
 DynamicArray quebrados;
 Stack* quebrados_temp;
 Stack* ranking;
-Stack* voltas_a_imprimir;
 Stack* voltas_do_turno;
 int todos_da_faixa[FAIXAS];
+
+int prox_volta = 1;
+Stack* acabaram_prox_volta;
 
 int** moveu;
 
@@ -213,7 +215,7 @@ pthread_cond_t cond_pista = PTHREAD_COND_INITIALIZER;
 pthread_barrier_t barr_move;
 pthread_mutex_t lock_faixa[FAIXAS];
 
-/* ===============================================================
+/*  ===============================================================
     ===================== FUNÇÕES CONCORRENTES ====================
     =============================================================== */
 
@@ -230,7 +232,7 @@ void* ciclista(void* arg) {
     Ciclista* self = (Ciclista*)arg;
     int velocidade = 0;
     int recarga = 0;
-    unsigned int seed = time(NULL) ^ (unsigned int)pthread_self();
+    unsigned int seed;
     int rng;
     int next_x;
     int vai_mover;
@@ -305,7 +307,6 @@ void* ciclista(void* arg) {
         }
         else {
             moveu[self->pos_x][self->pos_y] = 1;
-            // recarga++;
         }
 
         if (!vai_mover) recarga++;
@@ -331,7 +332,6 @@ void* ciclista(void* arg) {
                     continue;
                 }
                 while (!moveu[self->pos_x][y-1]) pthread_cond_wait(&cond_pista, &lock_pista);
-                // if (pista[self->pos_x][y-1] != POS_VAZIA) break;
             }
             move_ciclista(self, self->pos_x, y);
             pthread_cond_broadcast(&cond_pista);
@@ -339,6 +339,7 @@ void* ciclista(void* arg) {
         }
 
         if (self->pos_x == 0 && next_x == self->pos_x) {
+            seed = time(NULL) ^ (unsigned int)pthread_self();
             int quebrou = 0;
             if (self->volta % 5 == 0) {
                 rng = rand_r(&seed) % 100;
@@ -351,16 +352,16 @@ void* ciclista(void* arg) {
             }
 
             pthread_mutex_lock(&lock_volta);
-            push(voltas_a_imprimir, self);
+            if (self->volta == prox_volta) {
+                push(acabaram_prox_volta, self);
+            }
             if (!quebrou) {
                 int volta = self->volta;
                 acabaram_volta[volta]++;
                 if (ultima_alteracao_ultimos[volta] != tempo / 60) {
-                    // clear_array(&ultimos_da_volta[volta]);
                     clear_array(&ultimos_deste_turno[volta]);
                     ultima_alteracao_ultimos[volta] = tempo / 60;
                 }
-                // append(&ultimos_da_volta[volta], self);
                 append(&ultimos_deste_turno[volta], self);
                 push(voltas_do_turno, &volta);
             }
@@ -392,7 +393,7 @@ void* ciclista(void* arg) {
     return NULL;
 }
 
-/* ===============================================================
+/*  ===============================================================
     ==================== FUNÇÕES COORDENADORAS ====================
     =============================================================== */
 int volta_par = 2;
@@ -406,7 +407,7 @@ void destruir_ciclistas() {
         append(&quebrados, cic);
         pop(quebrados_temp);
     }
-    while (acabaram_volta[volta_par] >= vivos) {
+    while (acabaram_volta[volta_par] >= vivos && vivos > 1) {
         DynamicArray validos; init_array(&validos, 8);
         while (!is_stack_empty(ultimos_da_volta[volta_par])) {
             int valido = 0;
@@ -460,6 +461,7 @@ void resultados_finais() {
 }
 
 void mostrar_debug() {
+    printf("\n");
     for (int faixa = FAIXAS-1; faixa >= 0; faixa--) {
         for (int i = metros - 1; i >= 0; i--) {
             if (pista[i][faixa] == POS_VAZIA)
@@ -473,23 +475,25 @@ void mostrar_debug() {
 
 unsigned int indice_quebrados = 0;
 void mostrar_informacoes() {
-    int mostrar_pos = 0;
-    if (!is_stack_empty(voltas_a_imprimir) || indice_quebrados < quebrados.size)
-        printf("\n");
-    while (!is_stack_empty(voltas_a_imprimir)) {
-        mostrar_pos = 1;
-        Ciclista* proximo = (Ciclista*)top(voltas_a_imprimir);
-        printf("Ciclista %d acabou volta %d", proximo->id, proximo->volta);
-        pop(voltas_a_imprimir);
-        is_stack_empty(voltas_a_imprimir) ? printf("\n") : printf(" | ");
+    if (!is_stack_empty(acabaram_prox_volta) || indice_quebrados < quebrados.size)
+        printf("\nTempo = %fs\n", tempo/1000.0);
+
+    int alguem_acabou = 0;
+    while (!is_stack_empty(acabaram_prox_volta)) {
+        alguem_acabou = 1;
+        Ciclista* proximo = (Ciclista*)top(acabaram_prox_volta);
+        printf("Ciclista %d acabou volta %d", proximo->id, proximo->volta-1);
+        pop(acabaram_prox_volta);
+        is_stack_empty(acabaram_prox_volta) ? printf("\n") : printf(" | ");
     }
 
-    if (mostrar_pos) {
+    if (alguem_acabou) {
         for (int i = 0; i < num_ciclistas; i++) {
             if (!ciclistas[i]->esta_morto) {
                 printf("Ciclista %d: %dm\n", i, ciclistas[i]->pos_x);
             }
         }
+        prox_volta++;
     }
 
     if (indice_quebrados < quebrados.size) printf("Ciclistas que quebraram: ");
@@ -498,25 +502,6 @@ void mostrar_informacoes() {
         indice_quebrados < quebrados.size ? printf(" | ") : printf("\n");
     }
 }
-
-// int indice_volta = 1;
-// unsigned int indice_quebrados = 0;
-// void mostrar_informacoes() {
-//     while (acabaram_volta[indice_volta] >= vivos) {
-//         printf("Volta: %d [t = %3fs]\n", indice_volta, tempo/1000.0);
-//         for (int i = 0; i < num_ciclistas; i++) {
-//             if (!ciclistas[i]->esta_morto) {
-//                 printf("Ciclista %d: %dm\n", i, ciclistas[i]->pos_x);
-//             }
-//         }
-
-//         if (indice_quebrados < quebrados.size) printf("Ciclistas que quebraram: ");
-//         while (indice_quebrados < quebrados.size) printf("%d ", ((Ciclista*)quebrados.data[indice_quebrados++])->id);
-//         printf("\n");
-
-//         indice_volta++;
-//     }
-// }
 
 void gerar_ordem_aleatoria(int* vetor, int n) {
     for (int i = 0; i < n; i++) {
@@ -658,9 +643,9 @@ int main(int argc, char *argv[]) {
     }
 
     ranking = new_stack();
-    voltas_a_imprimir = new_stack();
     quebrados_temp = new_stack();
     voltas_do_turno = new_stack();
+    acabaram_prox_volta = new_stack();
 
     coordenador();
 
