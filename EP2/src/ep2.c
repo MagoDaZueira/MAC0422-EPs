@@ -259,7 +259,8 @@ void* ciclista(void* arg) {
 
         pthread_barrier_wait(&barr_move);
 
-        if (modo == 'i') pthread_mutex_lock(&lock_pista);
+        // if (modo == 'i') pthread_mutex_lock(&lock_pista);
+        if (modo == 'i') pthread_mutex_lock(&lock_faixa[self->pos_y]);
         if (todos_da_faixa[self->pos_y]) {
             moveu[self->pos_x][self->pos_y] = 1;
             moveu[next_x][self->pos_y] = 1;
@@ -268,7 +269,8 @@ void* ciclista(void* arg) {
             ja_moveu = 1;
             recarga = 0;
         }
-        if (modo == 'i') pthread_mutex_unlock(&lock_pista);
+        if (modo == 'i') pthread_mutex_unlock(&lock_faixa[self->pos_y]);
+        // if (modo == 'i') pthread_mutex_unlock(&lock_pista);
 
         pthread_barrier_wait(&barr_move);
         if (pista[x_velho][self->pos_y] == self->id && x_velho != self->pos_x) {
@@ -291,6 +293,9 @@ void* ciclista(void* arg) {
                         if (y != self->pos_y && pista[self->pos_x][y] != POS_VAZIA) {
                             while (!moveu[self->pos_x][y]) pthread_cond_wait(&cond_pista, &lock_pista);
                             if (pista[self->pos_x][y] != POS_VAZIA) break;
+                        }
+                        if (pista[next_x][y] != POS_VAZIA) {
+                            while (!moveu[next_x][y]) pthread_cond_wait(&cond_pista, &lock_pista);
                         }
                         if (pista[next_x][y] == POS_VAZIA) {
                             move_ciclista(self, next_x, y);
@@ -353,7 +358,7 @@ void* ciclista(void* arg) {
             if (self->volta == prox_volta) {
                 push(acabaram_prox_volta, self);
             }
-            if (!quebrou) {
+            if (!quebrou && self->volta < VOLTAS_MAX) {
                 int volta = self->volta;
                 acabaram_volta[volta]++;
                 if (ultima_alteracao_ultimos[volta] != tempo / 60) {
@@ -411,7 +416,6 @@ void destruir_ciclistas() {
             DynamicArray* ultimos = (DynamicArray*)top(ultimos_da_volta[volta_par]);
             for (unsigned int i = 0; i < ultimos->size; i++) {
                 if (!((Ciclista*)ultimos->data[i])->esta_morto) {
-                    printf("achou\n");
                     valido = 1;
                     break;
                 }
