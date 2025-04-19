@@ -222,7 +222,6 @@ pthread_cond_t cond_pista = PTHREAD_COND_INITIALIZER;
 pthread_barrier_t barr_move;
 pthread_mutex_t lock_faixa[FAIXAS];
 
-int** estado_lock;
 /*  ===============================================================
     ===================== FUNÇÕES CONCORRENTES ====================
     =============================================================== */
@@ -279,8 +278,7 @@ void* ciclista(void* arg) {
         x_velho2 = self->pos_x;
         
         if (modo == 'i') pthread_mutex_lock(&lock_pista);
-        else             pthread_mutex_lock(&lock_posicoes[self->pos_x][self->pos_y]);
-        
+
         if (vai_mover && !conseguiu_mover) {
             if (modo == 'i') {
                 for (int y = self->pos_y; y < FAIXAS; y++) {
@@ -302,15 +300,18 @@ void* ciclista(void* arg) {
             
             else {
                 for (int y = self->pos_y; y < FAIXAS; y++) {
+                    pthread_mutex_lock(&lock_posicoes[self->pos_x][y]);
                     if (y != self->pos_y && pista[self->pos_x][y] != POS_VAZIA) {
-                        pthread_mutex_lock(&lock_posicoes[self->pos_x][y]);
                         while (!moveu[self->pos_x][y]) pthread_cond_wait(&cond_posicoes[self->pos_x][y], &lock_posicoes[self->pos_x][y]);
-                        if (pista[self->pos_x][y] != POS_VAZIA) break;
-                        pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
+                        if (pista[self->pos_x][y] != POS_VAZIA) {
+                            pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
+                            break;
+                        }
                     }
+                    pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
                     pthread_mutex_lock(&lock_posicoes[next_x][y]);
                     if (pista[next_x][y] != POS_VAZIA) {
-                        while (!moveu[next_x][y]) pthread_cond_wait(&cond_pista, &lock_pista);
+                        while (!moveu[next_x][y]) pthread_cond_wait(&cond_posicoes[next_x][y], &lock_posicoes[next_x][y]);
                     }
                     if (pista[next_x][y] == POS_VAZIA) {
                         move_ciclista(self, next_x, y);
@@ -335,12 +336,13 @@ void* ciclista(void* arg) {
             pthread_mutex_unlock(&lock_pista);
         }
         else {
+            pthread_mutex_lock(&lock_posicoes[x_velho2][y_velho]);
             pthread_cond_broadcast(&cond_posicoes[x_velho2][y_velho]);
             pthread_mutex_unlock(&lock_posicoes[x_velho2][y_velho]);
         }
         
         pthread_barrier_wait(&barr_move);
-        
+
         moveu[self->pos_x][self->pos_y] = 0;
         
         pthread_barrier_wait(&barr_move);
@@ -367,7 +369,7 @@ void* ciclista(void* arg) {
                 if (pista[self->pos_x][y-1] == POS_VAZIA) {
                     y--;
                     pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
-                    pthread_mutex_lock(&lock_posicoes[self->pos_x][y-1]);
+                    if (y > 0) pthread_mutex_lock(&lock_posicoes[self->pos_x][y-1]);
                     continue;
                 }
                 while (!moveu[self->pos_x][y-1]) {
@@ -378,7 +380,7 @@ void* ciclista(void* arg) {
             move_ciclista(self, self->pos_x, y);
             pthread_cond_broadcast(&cond_posicoes[self->pos_x][y_temp]);
             pthread_mutex_unlock(&lock_posicoes[self->pos_x][y_temp]);
-            if (y != y_temp) pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
+            if (y != y_temp && y > 0) pthread_mutex_unlock(&lock_posicoes[self->pos_x][y-1]);
         }
 
         if (self->pos_x == 0 && next_x == self->pos_x) {
@@ -603,7 +605,6 @@ void zera_vetores() {
 
     for (int i = 0; i < metros; i++) {
         for (int j = 0; j < FAIXAS; j++) {
-            pthread_mutex_destroy(&lock_posicoes[i][j]);
             pthread_mutex_init(&lock_posicoes[i][j], NULL);
         }
     }
