@@ -503,7 +503,7 @@ void resultados_finais() {
     printf("\nPlacar Final:\n");
     while (!is_stack_empty(ranking)) {
         Ciclista* proximo = top(ranking);
-        printf("%do: Ciclista %d - Última volta: %d - Última chegada: %fs\n", indice, proximo->id, proximo->volta, proximo->tempo_volta/1000.0);
+        printf("%do: Ciclista %d - Última volta: %d - Última chegada: %.2fs\n", indice, proximo->id, proximo->volta, proximo->tempo_volta/1000.0);
         pop(ranking);
         indice++;
     }
@@ -540,7 +540,7 @@ void mostrar_debug() {
 unsigned int indice_quebrados = 0;
 void mostrar_informacoes() {
     if (!is_stack_empty(acabaram_prox_volta) || indice_quebrados < quebrados.size)
-        printf("\nTempo = %fs\n", tempo/1000.0);
+        printf("\nTempo = %.2fs\n", tempo/1000.0);
 
     int alguem_acabou = 0;
     while (!is_stack_empty(acabaram_prox_volta)) {
