@@ -16,70 +16,18 @@ EXERCÍCIO-PROGRAMA: EP2
 #include <time.h>
 
 /* ===============================================================
-    ===================== IMPLEMENTAÇÃO QUEUE =====================
-    =============================================================== */
+===================== IMPLEMENTAÇÃO STACK =====================
+=============================================================== */
 typedef struct Node {
     void *data;
     struct Node *next;
 } Node;
 
 typedef struct {
-    Node *front;
-    Node *back;
-    int size;
-} Queue;
-
-Queue* new_queue() {
-    Queue *q = (Queue*)malloc(sizeof(Queue));
-    q->front = q->back = NULL;
-    q->size = 0;
-    return q;
-}
-
-int is_queue_empty(Queue *q) {
-    return q->front == NULL;
-}
-
-void enqueue(Queue *q, void *data) {
-    Node *new_node = (Node*)malloc(sizeof(Node));
-    new_node->data = data;
-    new_node->next = NULL;
-
-    if (is_queue_empty(q)) {
-        q->front = new_node;
-    } else {
-        q->back->next = new_node;
-    }
-    q->back = new_node;
-    q->size++;
-}
-
-void dequeue(Queue *q) {
-    if (is_queue_empty(q)) return;
-
-    Node* temp = q->front;
-    q->front = q->front->next;
-
-    if (q->front == NULL) {
-        q->back = NULL;
-    }
-
-    free(temp);
-    q->size--;
-}
-
-void* front(Queue *q) {
-    return q->front ? q->front->data : NULL;
-}
-
-typedef struct {
     Node *top;
     int size;
 } Stack;
 
-/* ===============================================================
-    ===================== IMPLEMENTAÇÃO STACK =====================
-    =============================================================== */
 Stack* new_stack() {
     Stack *s = (Stack*)malloc(sizeof(Stack));
     s->top = NULL;
@@ -380,7 +328,7 @@ void* ciclista(void* arg) {
             move_ciclista(self, self->pos_x, y);
             pthread_cond_broadcast(&cond_posicoes[self->pos_x][y_temp]);
             pthread_mutex_unlock(&lock_posicoes[self->pos_x][y_temp]);
-            if (y != y_temp && y > 0) pthread_mutex_unlock(&lock_posicoes[self->pos_x][y-1]);
+            if (y > 0) pthread_mutex_unlock(&lock_posicoes[self->pos_x][y-1]);
         }
 
         if (self->pos_x == 0 && next_x == self->pos_x) {
@@ -601,12 +549,6 @@ void zera_vetores() {
     for (int i = 0; i < FAIXAS; i++) {
         todos_da_faixa[i] = 1;
         qtde_faixa[i] = 0;
-    }
-
-    for (int i = 0; i < metros; i++) {
-        for (int j = 0; j < FAIXAS; j++) {
-            pthread_mutex_init(&lock_posicoes[i][j], NULL);
-        }
     }
 }
 
