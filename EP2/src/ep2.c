@@ -135,7 +135,6 @@ typedef struct Ciclista {
     int volta;        // Volta em que está
     int esta_morto;   // Eliminado ou não
     int id;           // Inteiro que o representa
-    pthread_t thread; // Thread "ciclista" correspondente
 } Ciclista;
 
 /*  ===============================================================
@@ -150,8 +149,9 @@ int debug = 0;
 
 // Contadores
 long long tempo = 0; // Incrementa de 1 em 1, cada incremento = 60ms
-int vivos;
-int prox_volta = 1; // Próxima a ser imprimida
+int vivos;           // Quantos ciclistas não foram eliminados ainda
+int prox_volta = 1;  // Próxima a ser impressa
+int volta_par = 2;   // Qual é a próxima volta par a ser considerada
 
 // Matrizes de posições da pista
 int** pista; // Quem está ocupando cada posição
@@ -162,7 +162,7 @@ Ciclista** ciclistas;
 
 // Vetores de gerenciamento de voltas finalizadas
 int acabaram_volta[VOLTAS_MAX];               // Quantos acabaram uma dada volta
-Stack* acabaram_prox_volta;                   // Ciclistas que acabaram a próxima volta a ser imprimida
+Stack* acabaram_prox_volta;                   // Ciclistas que acabaram a próxima volta a ser impressa
 Stack* ultimos_da_volta[VOLTAS_MAX];          // Os últimos ciclistas a acabarem uma dada volta (empates agrupados)
 DynamicArray ultimos_deste_turno[VOLTAS_MAX]; // Agrupamento de ciclistas que terminaram uma dada volta neste tick do relógio 
 int ultima_alteracao_ultimos[VOLTAS_MAX];     // Último instante de tempo em que o vetor anterior foi alterado
@@ -301,109 +301,179 @@ void* ciclista(void* arg) {
                 if (!conseguiu_mover) moveu[self->pos_x][self->pos_y] = 1;
             }
             
+            // Abordagem Eficiente
             else {
+                // Para cada faixa mais externa disponível, vê se pode ir pra frente
                 for (int y = self->pos_y; y < FAIXAS; y++) {
+
+                    // Bloqueia a posição do y considerado
                     pthread_mutex_lock(&lock_posicoes[self->pos_x][y]);
+
+                    // Posição acima tem alguém
                     if (y != self->pos_y && pista[self->pos_x][y] != POS_VAZIA) {
+                        // Espera o cara de cima finalizar seu turno
                         while (!moveu[self->pos_x][y]) pthread_cond_wait(&cond_posicoes[self->pos_x][y], &lock_posicoes[self->pos_x][y]);
+                        // Se ele ainda tá lá, é impossível ultrapassar
                         if (pista[self->pos_x][y] != POS_VAZIA) {
                             pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
                             break;
                         }
                     }
+
+                    // Desbloqueia a posição do y considerado
                     pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
+
+                    // Bloqueia posição da frente
                     pthread_mutex_lock(&lock_posicoes[next_x][y]);
+
+                    // Caso naquele y a posição da frente esteja preenchida
                     if (pista[next_x][y] != POS_VAZIA) {
+                        // Espera o cara da frente finalizar seu turno
                         while (!moveu[next_x][y]) pthread_cond_wait(&cond_posicoes[next_x][y], &lock_posicoes[next_x][y]);
                     }
+
+                    // Caso naquele y a posição da frente esteja vazia, se move para ela
                     if (pista[next_x][y] == POS_VAZIA) {
                         move_ciclista(self, next_x, y);
                         conseguiu_mover = 1;
                         pthread_mutex_unlock(&lock_posicoes[next_x][y]);
                         break;
                     }
+
+                    // Desbloqueia posição da frente
                     pthread_mutex_unlock(&lock_posicoes[next_x][y]);
                 }
                 if (!conseguiu_mover) moveu[self->pos_x][self->pos_y] = 1;
             }
         }
         else {
+            // Caso não tenha conseguido se mover, marca que finalizou sua etapa
             moveu[self->pos_x][self->pos_y] = 1;
         }
         
+        // Atualiza a contagem de quando pode se mover
         if (conseguiu_mover) recarga = 0;
         else                 recarga++;
         
+        // Ineficiente, avisa a todos que finalizou sua etapa e destrava a pista
         if (modo == 'i') {
             pthread_cond_broadcast(&cond_pista);
             pthread_mutex_unlock(&lock_pista);
         }
+
+        // Eficiente, avisa a quem estava aguardando que ele se movesse que isso ocorreu
         else {
             pthread_mutex_lock(&lock_posicoes[x_velho][y_velho]);
             pthread_cond_broadcast(&cond_posicoes[x_velho][y_velho]);
             pthread_mutex_unlock(&lock_posicoes[x_velho][y_velho]);
         }
         
+        // Fim desta estapa do movimento
         pthread_barrier_wait(&barr_move);
 
+        // Marca que ainda não se moveu, para a próxima etapa
+        moveu[x_velho][y_velho] = 0;
         moveu[self->pos_x][self->pos_y] = 0;
         
         pthread_barrier_wait(&barr_move);
         
+        // Esta etapa consiste em jogar todos os ciclistas para as faixas mais internas, quando possível
+
+        y_velho = self->pos_y;
+
+        // Abordagem ineficiente
         if (modo == 'i') {
             int y = self->pos_y;
+            // Bloqueia a pista inteira
             pthread_mutex_lock(&lock_pista);
+            // Enquanto a posição debaixo não estiver preenchida com alguém que já se moveu, desce
             while (y > 0 && !(pista[self->pos_x][y-1] != POS_VAZIA && moveu[self->pos_x][y-1])) {
+
+                // Se embaixo estiver vazio, desce
                 if (pista[self->pos_x][y-1] == POS_VAZIA) {
                     y--;
                     continue;
                 }
+                // Caso contrário, espera o cara debaixo finalizar esta etapa
                 while (!moveu[self->pos_x][y-1]) pthread_cond_wait(&cond_pista, &lock_pista);
             }
+
+            // Move para a posição encontrada, avisa a todos que se moveu, e destrava a pista
             move_ciclista(self, self->pos_x, y);
             pthread_cond_broadcast(&cond_pista);
             pthread_mutex_unlock(&lock_pista);
         }
+
+        // Abordagem eficiente
         else {
-            int y_temp = self->pos_y;
-            int y = self->pos_y;
+            int y = self->pos_y;      // y iterador
+
+            // Trava a posição debaixo, caso exista
             if (y > 0) pthread_mutex_lock(&lock_posicoes[self->pos_x][y-1]);
+
+            // Enquanto a posição debaixo não estiver preenchida com alguém que já se moveu, desce
             while (y > 0 && !(pista[self->pos_x][y-1] != POS_VAZIA && moveu[self->pos_x][y-1])) {
+
+                // Se embaixo estiver vazio, desce
                 if (pista[self->pos_x][y-1] == POS_VAZIA) {
                     y--;
+                    // Destrava o novo y, e trava um abaixo
                     pthread_mutex_unlock(&lock_posicoes[self->pos_x][y]);
                     if (y > 0) pthread_mutex_lock(&lock_posicoes[self->pos_x][y-1]);
                     continue;
                 }
+                // Caso contrário, espera o cara debaixo finalizar esta etapa
                 while (!moveu[self->pos_x][y-1]) {
                     pthread_cond_wait(&cond_posicoes[self->pos_x][y-1], &lock_posicoes[self->pos_x][y-1]);
                 }
             }
-            pthread_mutex_lock(&lock_posicoes[self->pos_x][y_temp]);
+
+            // Se move e avisa quem o estava esperando
+            pthread_mutex_lock(&lock_posicoes[self->pos_x][y_velho]);
             move_ciclista(self, self->pos_x, y);
-            pthread_cond_broadcast(&cond_posicoes[self->pos_x][y_temp]);
-            pthread_mutex_unlock(&lock_posicoes[self->pos_x][y_temp]);
+            pthread_cond_broadcast(&cond_posicoes[self->pos_x][y_velho]);
+            pthread_mutex_unlock(&lock_posicoes[self->pos_x][y_velho]);
             if (y > 0) pthread_mutex_unlock(&lock_posicoes[self->pos_x][y-1]);
         }
 
+        pthread_barrier_wait(&barr_move);
+        moveu[self->pos_x][self->pos_y] = 0;
+        moveu[self->pos_x][y_velho] = 0;
+        pthread_barrier_wait(&barr_move);
+
+        // Se esta condição valer, este ciclista acabou uma volta
+        // Note que, no máximo, 10 ciclistas entrarão nesse if por turno,
+        // e portanto não há impacto significativo na performance
         if (self->pos_x == 0 && next_x == self->pos_x) {
+            // Calcula novo valor para a seed
+            // (usa seu id de thread para evitar similaridade entre ciclistas que cheguem em tempos próximos)
             seed = time(NULL) ^ (unsigned int)pthread_self();
-            int quebrou = 0;
+
+            int quebrou = 0; // Sinalizará se houve quebra
+
+            // Se for volta múltipla de 5, verifica se vai quebrar
             if (self->volta % 5 == 0) {
                 rng = rand_r(&seed) % 100;
+                // Quebrará
                 if (rng < 10) {
                     pthread_mutex_lock(&lock_quebra);
-                    push(quebrados_temp, self);
+                    push(quebrados_temp, self); // Pilha de quebrados deste turno
                     pthread_mutex_unlock(&lock_quebra);
                     quebrou = 1;
                 }
             }
 
-            pthread_mutex_lock(&lock_volta);
+            pthread_mutex_lock(&lock_volta); // Mutex de gerenciamento de voltas
+
+            // Caso seja a próxima volta a ser impressa, adiciona-se à pilha de quem a acabou
             if (self->volta == prox_volta) {
                 push(acabaram_prox_volta, self);
             }
-            if (!quebrou && self->volta < VOLTAS_MAX) {
+
+            // Caso ele não tenha quebrado, se adiciona aos que acabaram essa volta
+            // Perceba que, caso volta < volta_par, essas operações são irrelevantes para
+            // a entidade central, e portanto este bloco é ignorado
+            if (!quebrou && self->volta >= volta_par) {
                 int volta = self->volta;
                 acabaram_volta[volta]++;
                 if (ultima_alteracao_ultimos[volta] != tempo) {
@@ -415,19 +485,24 @@ void* ciclista(void* arg) {
             }
             pthread_mutex_unlock(&lock_volta);
 
+            // Atualiza suas variáveis referentes a voltas
             self->tempo_volta = tempo;
             self->volta++;
             
+            // Atualiza sua velocidade
             rng = rand_r(&seed) % 100;
             if (velocidade) velocidade = rng < 45;
             else            velocidade = rng < 75;
         }
 
+        // Bloco de barreira que avisa a entidade central quando todos chegarem a esse ponto
         pthread_mutex_lock(&lock_coord);
         threads_aguardando++;
+        // Todos chegaram, avisa a entidade central
         if (threads_aguardando >= vivos) {
             pthread_cond_signal(&cond_coordenador);
         }
+        // Aguarda o sinal da entidade central
         while (threads_aguardando > 0) {
             pthread_cond_wait(&cond_ciclistas, &lock_coord);
         }
@@ -441,55 +516,74 @@ void* ciclista(void* arg) {
     ==================== FUNÇÕES COORDENADORAS ====================
     =============================================================== */
     
-int volta_par = 2;
-void destruir_ciclistas() {
+
+// Atualiza variáveis que sinalizam a eliminação de um ciclista
+void destroi_ciclista(Ciclista* cic) {
+    cic->esta_morto = 1;
+    cic->volta--;
+    pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
+    vivos--;
+}
+
+// Gerenciador das condições de eliminação (volta par e quebra)
+void verifica_destruicoes() {
+    // Ciclistas que quebraram
     while (!is_stack_empty(quebrados_temp)) {
         Ciclista* cic = top(quebrados_temp);
-        cic->esta_morto = 1;
-        cic->volta--;
-        pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
-        vivos--;
-        append(&quebrados, cic);
+        destroi_ciclista(cic);
+        append(&quebrados, cic); // Adiciona ao vetor final
         pop(quebrados_temp);
     }
+
+    // Itera sobre as voltas pares que todos os ciclistas vivos finalizaram
     while (acabaram_volta[volta_par] >= vivos && vivos > 1) {
-        DynamicArray* validos = malloc(sizeof(DynamicArray)); init_array(validos, 8);
+
+        // Vetor que guarda os ciclistas da volta par que não estão mortos
+        DynamicArray* validos = malloc(sizeof(DynamicArray)); init_array(validos, 10);
+
+        // Verifica os conjuntos de ciclistas que acabaram a volta simultaneamente,
+        // do mais recente ao mais velho
         while (!is_stack_empty(ultimos_da_volta[volta_par])) {
-            int valido = 0;
             DynamicArray* ultimos = (DynamicArray*)top(ultimos_da_volta[volta_par]);
             for (unsigned int i = 0; i < ultimos->size; i++) {
-                if (!((Ciclista*)ultimos->data[i])->esta_morto) {
-                    valido = 1;
-                    break;
-                }
-            }
-            pop(ultimos_da_volta[volta_par]);
-            if (!valido) {
-                continue;
-            }
-            for (unsigned int i = 0; i < ultimos->size; i++) {
+                // Ciclista vivo, adiciona ao vetor
                 if (!((Ciclista*)ultimos->data[i])->esta_morto) {
                     append(validos, (Ciclista*)ultimos->data[i]);
                 }
             }
-            break;
+            // Retira os mais recentes da pilha
+            free_array(ultimos);
+            pop(ultimos_da_volta[volta_par]);
+
+            // Caso tenha pelo menos um que ainda está vivo nesta iteração, sai do loop
+            if (validos->size > 0) break;
         }
+
+        // Escolhe aleatoriamente um dentre os ciclistas filtrados acima, e o destrói
         int escolhido = rand() % validos->size;
         Ciclista* cic = validos->data[escolhido];
-        cic->esta_morto = 1;
-        cic->volta--;
-        pista[cic->pos_x][cic->pos_y] = POS_VAZIA;
-        vivos--;
+        destroi_ciclista(cic);
+
+        // Manda o ciclista para a pilha do ranking final
         push(ranking, cic);
-        clear_array(validos);
+
+        // Libera o a memória alocada pelo vetor de filtragem 
+        free_array(validos);
+
+        // Próxima volta par que será considerada
         volta_par += 2;
     }
 }
 
+// Para todas as voltas com algum ciclista que a completou neste turno,
+// adiciona o vetor com todos que concluíram tal volta na pilha relativa a essa volta
 void adiciona_ultimos_volta() {
     while (!is_stack_empty(voltas_do_turno)) {
         int volta = *(int*)top(voltas_do_turno);
         if (volta < VOLTAS_MAX) {
+            // Manda o conjunto de ciclistas para a pilha
+            // Uma cópia é relevante pois o vetor ultimos_deste_turno[volta]
+            // será esvaziado da próxima vez que algúem cumprir essa volta
             DynamicArray* copia = malloc(sizeof(DynamicArray));
             init_array(copia, 4);
             copy_dynamic(&ultimos_deste_turno[volta], copia);
@@ -499,6 +593,7 @@ void adiciona_ultimos_volta() {
     }
 }
 
+// Impressões de ranking e ciclistas quebrados
 void resultados_finais() {
     int indice = 1;
     printf("\nPlacar Final:\n");
@@ -515,6 +610,7 @@ void resultados_finais() {
     }
 }
 
+// Verifica o espaço necessário entre cada posição na impressão do debug
 int conta_espaco() {
     int res = 1;
     int temp = num_ciclistas;
@@ -524,7 +620,10 @@ int conta_espaco() {
     }
     return res;
 }
-int espaco;
+
+int espaco; // Guardará o retorno da função acima
+
+// Impressão de todas as posições da pista
 void mostrar_debug() {
     printf("\n");
     for (int faixa = FAIXAS-1; faixa >= 0; faixa--) {
@@ -538,12 +637,15 @@ void mostrar_debug() {
     }
 }
 
-unsigned int indice_quebrados = 0;
+unsigned int indice_quebrados = 0; // Índice do próximo ciclista quebrado a ser impresso
+// Quando alguma volta é finalizada ou alguma quebra ocorre, faz a impressão necessária
 void mostrar_informacoes() {
+    // Se vai ocorrer uma impressão, mostra o tempo
     if (!is_stack_empty(acabaram_prox_volta) || indice_quebrados < quebrados.size)
         printf("\nTempo = %.2fs\n", (tempo*60)/1000.0);
 
     int alguem_acabou = 0;
+    // Mostra os ciclistas que acabaram a próxima volta a ser impressa
     while (!is_stack_empty(acabaram_prox_volta)) {
         alguem_acabou = 1;
         Ciclista* proximo = (Ciclista*)top(acabaram_prox_volta);
@@ -552,15 +654,17 @@ void mostrar_informacoes() {
         is_stack_empty(acabaram_prox_volta) ? printf("\n") : printf(" | ");
     }
 
+    // Imprime a posição de todos os ciclistas, caso alguém tenha finalizado a volta relevante
     if (alguem_acabou) {
         for (int i = 0; i < num_ciclistas; i++) {
             if (!ciclistas[i]->esta_morto) {
                 printf("Ciclista %d: %dm\n", i, ciclistas[i]->pos_x);
             }
         }
-        prox_volta++;
+        prox_volta++; // Próxima volta a ser impressa atualizada
     }
 
+    // Impressão dos ciclistas que quebraram
     if (indice_quebrados < quebrados.size) printf("Ciclistas que quebraram: ");
     while (indice_quebrados < quebrados.size) {
         printf("Ciclista %d", ((Ciclista*)quebrados.data[indice_quebrados++])->id);
@@ -568,11 +672,11 @@ void mostrar_informacoes() {
     }
 }
 
+// Embaralhamento de um vetor de n posições
 void gerar_ordem_aleatoria(int* vetor, int n) {
     for (int i = 0; i < n; i++) {
         vetor[i] = i;
     }
-
     for (int i = n - 1; i > 0; i--) {
         int j = rand() % (i + 1);
         int temp = vetor[i];
@@ -581,6 +685,7 @@ void gerar_ordem_aleatoria(int* vetor, int n) {
     }
 }
 
+// Determina as posições iniciais dos ciclistas, aleatoriamente dentro de um agrupamento
 void posicoes_iniciais() {
     int* ordem = malloc(num_ciclistas * sizeof(int));
     gerar_ordem_aleatoria(ordem, num_ciclistas);
@@ -591,80 +696,98 @@ void posicoes_iniciais() {
         ciclistas[i]->pos_y = y;
         pista[x][y] = ciclistas[i]->id;
     }
+    free(ordem);
 }
 
+// Reinicializa os valores de vetores
 void zera_vetores() {
-    for (int i = 0; i < metros; i++) {
-        for (int j = 0; j < FAIXAS; j++) {
-            moveu[i][j] = 0;
-        }
-    }
     for (int i = 0; i < FAIXAS; i++) {
         qtde_faixa[i] = 0;
     }
 }
 
-
+// Função principal do programa
 void coordenador() {
+    // Espaço entre posições da impressão
     espaco = conta_espaco();
 
+    // Mutex que faz todas as threads aguardarem o fim das ações do coordenador num dado turno
     pthread_mutex_lock(&lock_coord);
+
+    // Atribui as posições iniciais de cada ciclista
     posicoes_iniciais();
 
     if (debug) mostrar_debug();
     
+    // Inicia as threads dos ciclistas
     for (int i = 0; i < num_ciclistas; i++) {
         pthread_t thread;
-        ciclistas[i]->thread = thread;
         pthread_create(&thread, NULL, ciclista, ciclistas[i]);
     }
 
-    pthread_barrier_init(&barr_move, NULL, vivos);
+    // Loop principal
     while (vivos >= 2) {
-        pthread_barrier_destroy(&barr_move);
+        // Barreira usada nas threads dos ciclistas
+        // Deve ser reinicializada a cada iteração pois a quantia de ciclistas vivos pode mudar
         pthread_barrier_init(&barr_move, NULL, vivos);
         
         zera_vetores();
+
+        // Sinaliza aos ciclistas que eles podem prosseguir sua execução,
+        // e aguarda que todos acabem seus novos turnos
         pthread_cond_broadcast(&cond_ciclistas);
         while (threads_aguardando < vivos) {
             pthread_cond_wait(&cond_coordenador, &lock_coord);
         }
         threads_aguardando = 0;
 
+        // Funções de possíveis finalizações de voltas
         adiciona_ultimos_volta();
-        destruir_ciclistas();
+        verifica_destruicoes();
 
+        // Incrementa o tempo (equivale a tempo += 60ms na lógica)
         tempo++;
 
+        // Imprime o necessário, a depender de se a opção -debug foi usada
         if (debug) mostrar_debug();
         else       mostrar_informacoes();
+
+        pthread_barrier_destroy(&barr_move);
     }
 
     pthread_mutex_unlock(&lock_coord);
 
+    // Fim da simulação
+    // Encontra o último ciclista ainda não eliminado e o adiciona ao ranking
     for (int i = 0; i < num_ciclistas; i++) {
         if (!ciclistas[i]->esta_morto) {
             push(ranking, ciclistas[i]);
             ciclistas[i]->esta_morto = 1;
         }
     }
+    // Imprime as informações do fim da execução
     resultados_finais();
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 4 || argc > 5) {
+    // Tratamento de erro na entrada
+    if (argc < 4 || argc > 5 || atoi(argv[2]) > 5 * atoi(argv[1]) || (argv[3][0] != 'i' && argv[3][0] != 'e')) {
         printf("Uso correto: ep2 <metros> <ciclistas> <i|e (modo)> -debug(opcional)\n");
         return 1;
     }
 
+    // Inicializa a seed do rng
     srand(time(NULL));
 
+    // Guarda os argumentos de entrada em variaáveis
     metros = atoi(argv[1]);
     num_ciclistas = atoi(argv[2]);
     modo = argv[3][0];
     if (argc == 5) debug = !strcmp(argv[4], "-debug");
-
+    
     vivos = num_ciclistas;
+    
+    // Inicializa vetores
     ciclistas = malloc(num_ciclistas * sizeof(Ciclista*));
     for (int i = 0; i < num_ciclistas; i++) {
         ciclistas[i] = malloc(sizeof(Ciclista));
@@ -688,7 +811,6 @@ int main(int argc, char *argv[]) {
             moveu[i][j] = 0;
         }
     }
-    
 
     init_array(&quebrados, 16);
     for (int i = 0; i < VOLTAS_MAX; i++) {
@@ -696,19 +818,20 @@ int main(int argc, char *argv[]) {
         init_array(&ultimos_deste_turno[i], 4);
     }
 
-    lock_posicoes = malloc(metros * sizeof(pthread_mutex_t*));
-    for (int i = 0; i < metros; i++) {
-        lock_posicoes[i] = malloc(FAIXAS * sizeof(pthread_mutex_t));
-        for (int j = 0; j < FAIXAS; j++) {
-            pthread_mutex_init(&lock_posicoes[i][j], NULL);
+    if (modo == 'e') {
+        lock_posicoes = malloc(metros * sizeof(pthread_mutex_t*));
+        for (int i = 0; i < metros; i++) {
+            lock_posicoes[i] = malloc(FAIXAS * sizeof(pthread_mutex_t));
+            for (int j = 0; j < FAIXAS; j++) {
+                pthread_mutex_init(&lock_posicoes[i][j], NULL);
+            }
         }
-    }
-
-    cond_posicoes = malloc(metros * sizeof(pthread_cond_t*));
-    for (int i = 0; i < metros; i++) {
-        cond_posicoes[i] = malloc(FAIXAS * sizeof(pthread_cond_t));
-        for (int j = 0; j < FAIXAS; j++) {
-            pthread_cond_init(&cond_posicoes[i][j], NULL);
+        cond_posicoes = malloc(metros * sizeof(pthread_cond_t*));
+        for (int i = 0; i < metros; i++) {
+            cond_posicoes[i] = malloc(FAIXAS * sizeof(pthread_cond_t));
+            for (int j = 0; j < FAIXAS; j++) {
+                pthread_cond_init(&cond_posicoes[i][j], NULL);
+            }
         }
     }
 
@@ -716,11 +839,13 @@ int main(int argc, char *argv[]) {
         pthread_mutex_init(&lock_faixa[i], NULL);
     }
 
+    // Inicializa stacks
     ranking = new_stack();
     quebrados_temp = new_stack();
     voltas_do_turno = new_stack();
     acabaram_prox_volta = new_stack();
 
+    // Chama a função principal
     coordenador();
 
     return 0;
