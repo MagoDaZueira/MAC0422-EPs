@@ -14,19 +14,11 @@ EXERCÍCIO-PROGRAMA: EP2
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
+#include "ep2.h"
 
 /* ===============================================================
    ===================== IMPLEMENTAÇÃO STACK =====================
    =============================================================== */
-typedef struct Node {
-    void *data;        // Elemento deste nó
-    struct Node *next; // Ponteiro para o próximo nó
-} Node;
-
-typedef struct {
-    Node *top; // Elemento do topo
-    int size;  // Quantidade de elementos
-} Stack;
 
 // Inicializa a pilha
 Stack* new_stack() {
@@ -68,11 +60,6 @@ void* top(Stack *s) {
 /* ===============================================================
    ======================= ARRAY DINÂMICO ========================
    =============================================================== */
-typedef struct {
-    void **data;     // Vetor com os elementos
-    size_t size;     // Quantos elementos tem no vetor
-    size_t capacity; // Quanto espaço está alocado para o vetor
-} DynamicArray;
 
 // Inicializa o vetor
 void init_array(DynamicArray *arr, size_t initialCapacity) {
@@ -117,25 +104,6 @@ void copy_dynamic(DynamicArray* from, DynamicArray* to) {
         append(to, from->data[i]);
     }
 }
-
-/*  ===============================================================
-    =========================== DEFINES ===========================
-    =============================================================== */
-#define VOLTAS_MAX 25005 // Máximo de voltas relevantes à lógica de eliminação
-#define FAIXAS 10        // Quantia de faixas da pista
-#define POS_VAZIA -1     // Valor que indica uma posição sem ciclista
-
-/*  ===============================================================
-    =========================== STRUCTS ===========================
-    =============================================================== */
-typedef struct Ciclista {
-    int pos_x;        // Metragem
-    int pos_y;        // Faixa
-    int tempo_volta;  // Tempo em que concluiu sua última volta
-    int volta;        // Volta em que está
-    int esta_morto;   // Eliminado ou não
-    int id;           // Inteiro que o representa
-} Ciclista;
 
 /*  ===============================================================
     ====================== VARIÁVEIS GLOBAIS ======================
@@ -406,7 +374,7 @@ void* ciclista(void* arg) {
 
         // Abordagem eficiente
         else {
-            int y = self->pos_y;      // y iterador
+            int y = self->pos_y;
 
             // Trava a posição debaixo, caso exista
             if (y > 0) pthread_mutex_lock(&lock_posicoes[self->pos_x][y-1]);
@@ -435,19 +403,14 @@ void* ciclista(void* arg) {
             pthread_mutex_unlock(&lock_posicoes[self->pos_x][y_velho]);
             if (y > 0) pthread_mutex_unlock(&lock_posicoes[self->pos_x][y-1]);
         }
-
-        pthread_barrier_wait(&barr_move);
-        moveu[self->pos_x][self->pos_y] = 0;
-        moveu[self->pos_x][y_velho] = 0;
-        pthread_barrier_wait(&barr_move);
-
+        
         // Se esta condição valer, este ciclista acabou uma volta
         // Note que, no máximo, 10 ciclistas entrarão nesse if por turno,
         // e portanto não há impacto significativo na performance
         if (self->pos_x == 0 && next_x == self->pos_x) {
             // Calcula novo valor para a seed
             // (usa seu id de thread para evitar similaridade entre ciclistas que cheguem em tempos próximos)
-            seed = time(NULL) ^ (unsigned int)pthread_self();
+            seed = time(NULL) ^ self->id;
 
             int quebrou = 0; // Sinalizará se houve quebra
 
@@ -464,7 +427,7 @@ void* ciclista(void* arg) {
             }
 
             pthread_mutex_lock(&lock_volta); // Mutex de gerenciamento de voltas
-
+            
             // Caso seja a próxima volta a ser impressa, adiciona-se à pilha de quem a acabou
             if (self->volta == prox_volta) {
                 push(acabaram_prox_volta, self);
@@ -507,8 +470,12 @@ void* ciclista(void* arg) {
             pthread_cond_wait(&cond_ciclistas, &lock_coord);
         }
         pthread_mutex_unlock(&lock_coord);
-    }
 
+        // Zera o moveu da posição de antes e depois de descer
+        moveu[self->pos_x][self->pos_y] = 0;
+        moveu[self->pos_x][y_velho] = 0;
+    }
+    
     return NULL;
 }
 
@@ -559,16 +526,20 @@ void verifica_destruicoes() {
             if (validos->size > 0) break;
         }
 
-        // Escolhe aleatoriamente um dentre os ciclistas filtrados acima, e o destrói
-        int escolhido = rand() % validos->size;
-        Ciclista* cic = validos->data[escolhido];
-        destroi_ciclista(cic);
-
-        // Manda o ciclista para a pilha do ranking final
-        push(ranking, cic);
-
-        // Libera o a memória alocada pelo vetor de filtragem 
-        free_array(validos);
+        // Teoricamente "validos" nunca chega aqui sem nenhum elemento,
+        // mas adicionei a verificação para ter consistência
+        if (validos->size > 0) {
+            // Escolhe aleatoriamente um dentre os ciclistas filtrados acima, e o destrói
+            int escolhido = rand() % validos->size;
+            Ciclista* cic = validos->data[escolhido];
+            destroi_ciclista(cic);
+    
+            // Manda o ciclista para a pilha do ranking final
+            push(ranking, cic);
+    
+            // Libera o a memória alocada pelo vetor de filtragem 
+            free_array(validos);
+        }
 
         // Próxima volta par que será considerada
         volta_par += 2;
