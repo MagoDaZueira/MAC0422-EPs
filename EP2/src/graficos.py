@@ -35,7 +35,8 @@ def plotar_comparacoes_pares(arquivos, modo):
         # label1 = f'Ingênua'
         # label2 = f'Eficiente'
         # labels.append((label1, label2))
-        labels = [30, 150, 450]
+        labels = [30, 150, 500]
+        # labels = [30, 150, 450]
 
     x = np.arange(3)  # três agrupamentos
     largura = 0.35
@@ -56,9 +57,9 @@ def plotar_comparacoes_pares(arquivos, modo):
                 f'{height:.2f}', ha='center', va='bottom', fontsize=9)
 
     ax.set_ylabel(nome_y)
-    ax.set_title(f'Comparação de {nome_y} entre Abordagens\nVariando Ciclistas')
+    ax.set_title(f'Comparação de {nome_y} entre Abordagens\nCiclistas = 150, Variando Pista')
     ax.set_xticks(x)
-    ax.set_xticklabels([f'{i} Ciclistas' for i in labels])
+    ax.set_xticklabels([f'Pista de {i}m' for i in labels])
     # ax.set_xticklabels([f'{l1} vs {l2}' for l1, l2 in labels])
     ax.legend()
     plt.tight_layout()
