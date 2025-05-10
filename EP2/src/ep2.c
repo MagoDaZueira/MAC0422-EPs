@@ -4,16 +4,6 @@ NUSP: 15482671
 EXERCÍCIO-PROGRAMA: EP2
 */
 
-/* ===============================================================
-   ========================== INCLUDES ===========================
-   =============================================================== */
-#define _GNU_SOURCE
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <pthread.h>
-#include <time.h>
 #include "ep2.h"
 
 /* ===============================================================
@@ -116,10 +106,11 @@ char modo;
 int debug = 0;
 
 // Contadores
-long long tempo = 0; // Incrementa de 1 em 1, cada incremento = 60ms
-int vivos;           // Quantos ciclistas não foram eliminados ainda
-int prox_volta = 1;  // Próxima a ser impressa
-int volta_par = 2;   // Qual é a próxima volta par a ser considerada
+long long tempo = 0;    // Incrementa de 1 em 1, cada incremento = 60ms
+int vivos;              // Quantos ciclistas não foram eliminados ainda
+int prox_volta = 1;     // Próxima a ser impressa
+int volta_par = 2;      // Qual é a próxima volta par a ser considerada
+int qtde_para_eliminar; // Quantos ciclistas devem acabar volta_par para ocorrer eliminação
 
 // Matrizes de posições da pista
 int** pista; // Quem está ocupando cada posição
@@ -436,7 +427,7 @@ void* ciclista(void* arg) {
             // Caso ele não tenha quebrado, se adiciona aos que acabaram essa volta
             // Perceba que, caso volta < volta_par, essas operações são irrelevantes para
             // a entidade central, e portanto este bloco é ignorado
-            if (!quebrou && self->volta >= volta_par) {
+            if (!quebrou && self->volta >= volta_par && self->volta % 2 == 0) {
                 int volta = self->volta;
                 acabaram_volta[volta]++;
                 if (ultima_alteracao_ultimos[volta] != tempo) {
@@ -482,7 +473,6 @@ void* ciclista(void* arg) {
 /*  ===============================================================
     ==================== FUNÇÕES COORDENADORAS ====================
     =============================================================== */
-    
 
 // Atualiza variáveis que sinalizam a eliminação de um ciclista
 void destroi_ciclista(Ciclista* cic) {
@@ -499,11 +489,12 @@ void verifica_destruicoes() {
         Ciclista* cic = top(quebrados_temp);
         destroi_ciclista(cic);
         append(&quebrados, cic); // Adiciona ao vetor final
+        if (cic->volta <= volta_par + 1) qtde_para_eliminar--;
         pop(quebrados_temp);
     }
 
     // Itera sobre as voltas pares que todos os ciclistas vivos finalizaram
-    while (acabaram_volta[volta_par] >= vivos && vivos > 1) {
+    while (acabaram_volta[volta_par] >= qtde_para_eliminar && vivos > 1) {
 
         // Vetor que guarda os ciclistas da volta par que não estão mortos
         DynamicArray* validos = malloc(sizeof(DynamicArray)); init_array(validos, 10);
@@ -522,8 +513,15 @@ void verifica_destruicoes() {
             free_array(ultimos);
             pop(ultimos_da_volta[volta_par]);
 
-            // Caso tenha pelo menos um que ainda está vivo nesta iteração, sai do loop
-            if (validos->size > 0) break;
+            // Caso tenha pelo menos um que ainda está vivo nesta iteração,
+            // libera toda a stack desta volta e sai do loop
+            if (validos->size > 0) {
+                while (!is_stack_empty(ultimos_da_volta[volta_par])) {
+                    free_array((DynamicArray*)top(ultimos_da_volta[volta_par]));
+                    pop(ultimos_da_volta[volta_par]);
+                }
+                break;
+            }
         }
 
         // Teoricamente "validos" nunca chega aqui sem nenhum elemento,
@@ -533,16 +531,18 @@ void verifica_destruicoes() {
             int escolhido = rand() % validos->size;
             Ciclista* cic = validos->data[escolhido];
             destroi_ciclista(cic);
-    
             // Manda o ciclista para a pilha do ranking final
             push(ranking, cic);
     
-            // Libera o a memória alocada pelo vetor de filtragem 
-            free_array(validos);
         }
-
+        
+        // Libera memória
+        free_array(validos);
+        free_array(&ultimos_deste_turno[volta_par]);
+        
         // Próxima volta par que será considerada
         volta_par += 2;
+        qtde_para_eliminar = vivos;
     }
 }
 
@@ -740,10 +740,18 @@ void coordenador() {
     resultados_finais();
 }
 
+
+/*  ===============================================================
+    ========================= FUNÇÃO MAIN =========================
+    =============================================================== */
+
 int main(int argc, char *argv[]) {
     // Tratamento de erro na entrada
     if (argc < 4 || argc > 5 || atoi(argv[2]) > 5 * atoi(argv[1]) || (argv[3][0] != 'i' && argv[3][0] != 'e')) {
         printf("Uso correto: ep2 <metros> <ciclistas> <i|e (modo)> -debug(opcional)\n");
+        if (atoi(argv[2]) > 5 * atoi(argv[1])) {
+            printf("Garanta que ciclistas <= 5 * metros\n");
+        }
         return 1;
     }
 
@@ -757,6 +765,7 @@ int main(int argc, char *argv[]) {
     if (argc == 5) debug = !strcmp(argv[4], "-debug");
     
     vivos = num_ciclistas;
+    qtde_para_eliminar = vivos;
     
     // Inicializa vetores
     ciclistas = malloc(num_ciclistas * sizeof(Ciclista*));
@@ -784,7 +793,9 @@ int main(int argc, char *argv[]) {
     }
 
     init_array(&quebrados, 16);
-    for (int i = 0; i < VOLTAS_MAX; i++) {
+
+    // Apenas os pares interessam
+    for (int i = 0; i < VOLTAS_MAX; i+=2) {
         ultimos_da_volta[i] = new_stack();
         init_array(&ultimos_deste_turno[i], 4);
     }

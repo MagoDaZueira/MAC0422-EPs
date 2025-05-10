@@ -1,6 +1,13 @@
 #ifndef EP2_H
 #define EP2_H
 
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
+#include <time.h>
 #include <stdlib.h>
 
 // ======================== STRUCTS ========================

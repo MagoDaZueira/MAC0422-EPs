@@ -2,7 +2,7 @@
 CC = gcc
 
 # Flags de compilação
-CFLAGS = -Wall
+CFLAGS = -Wall -pthread
 
 # Executáveis
 EXECUTABLES = ep2
