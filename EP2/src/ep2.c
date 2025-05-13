@@ -106,11 +106,11 @@ char modo;
 int debug = 0;
 
 // Contadores
-long long tempo = 0;    // Incrementa de 1 em 1, cada incremento = 60ms
-int vivos;              // Quantos ciclistas não foram eliminados ainda
-int prox_volta = 1;     // Próxima a ser impressa
-int volta_par = 2;      // Qual é a próxima volta par a ser considerada
-int qtde_para_eliminar; // Quantos ciclistas devem acabar volta_par para ocorrer eliminação
+long long tempo = 0;     // Incrementa de 1 em 1, cada incremento = 60ms
+int vivos;               // Quantos ciclistas não foram eliminados ainda
+int prox_volta = 1;      // Próxima a ser impressa
+int volta_par = 2;       // Qual é a próxima volta par a ser considerada
+int acabaram_offset = 0; // Ciclistas que quebraram em uma volta maior que volta_par
 
 // Matrizes de posições da pista
 int** pista; // Quem está ocupando cada posição
@@ -121,6 +121,7 @@ Ciclista** ciclistas;
 
 // Vetores de gerenciamento de voltas finalizadas
 int acabaram_volta[VOLTAS_MAX];               // Quantos acabaram uma dada volta
+int quebraram_volta[VOLTAS_MAX];              // Quantos ciclistas quebraram em cada volta
 Stack* acabaram_prox_volta;                   // Ciclistas que acabaram a próxima volta a ser impressa
 Stack* ultimos_da_volta[VOLTAS_MAX];          // Os últimos ciclistas a acabarem uma dada volta (empates agrupados)
 DynamicArray ultimos_deste_turno[VOLTAS_MAX]; // Agrupamento de ciclistas que terminaram uma dada volta neste tick do relógio 
@@ -489,12 +490,17 @@ void verifica_destruicoes() {
         Ciclista* cic = top(quebrados_temp);
         destroi_ciclista(cic);
         append(&quebrados, cic); // Adiciona ao vetor final
-        if (cic->volta <= volta_par + 1) qtde_para_eliminar--;
+
+        // Para o eliminador saber quem marcou que acabou a volta, mas quebrou
+        // Ao volta_par passar por quebraram_volta[volta], offset incrementará novamente
+        quebraram_volta[cic->volta-1]++;
+        if (cic->volta-1 > volta_par) acabaram_offset--;
+
         pop(quebrados_temp);
     }
 
     // Itera sobre as voltas pares que todos os ciclistas vivos finalizaram
-    while (acabaram_volta[volta_par] >= qtde_para_eliminar && vivos > 1) {
+    while (acabaram_volta[volta_par] + acabaram_offset >= vivos && vivos > 1) {
 
         // Vetor que guarda os ciclistas da volta par que não estão mortos
         DynamicArray* validos = malloc(sizeof(DynamicArray)); init_array(validos, 10);
@@ -541,8 +547,10 @@ void verifica_destruicoes() {
         free_array(&ultimos_deste_turno[volta_par]);
         
         // Próxima volta par que será considerada
+        // Aumentamos o offset pela quantidade que quebrou nas voltas que volta_par
+        // acabou de ultrapassar, já que os quebrados delas não terão mais impacto
+        acabaram_offset += quebraram_volta[volta_par+1] + quebraram_volta[volta_par+2];
         volta_par += 2;
-        qtde_para_eliminar = vivos;
     }
 }
 
@@ -765,7 +773,6 @@ int main(int argc, char *argv[]) {
     if (argc == 5) debug = !strcmp(argv[4], "-debug");
     
     vivos = num_ciclistas;
-    qtde_para_eliminar = vivos;
     
     // Inicializa vetores
     ciclistas = malloc(num_ciclistas * sizeof(Ciclista*));
@@ -796,9 +803,11 @@ int main(int argc, char *argv[]) {
 
     // Apenas os pares interessam
     for (int i = 0; i < VOLTAS_MAX; i+=2) {
+        acabaram_volta[i] = 0;
         ultimos_da_volta[i] = new_stack();
-        init_array(&ultimos_deste_turno[i], 4);
+        init_array(&ultimos_deste_turno[i], 1);
     }
+    for (int i = 0; i < VOLTAS_MAX; i++) quebraram_volta[i] = 0;
 
     if (modo == 'e') {
         lock_posicoes = malloc(metros * sizeof(pthread_mutex_t*));
