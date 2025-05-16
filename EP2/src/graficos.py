@@ -4,6 +4,8 @@ import numpy as np
 from scipy import stats
 import sys
 
+plt.rcParams.update({'font.size': 14})
+
 def calcular_ic(amostras, confianca=0.95):
     n = len(amostras)
     media = np.mean(amostras)
@@ -35,8 +37,8 @@ def plotar_comparacoes_pares(arquivos, modo):
         # label1 = f'Ingênua'
         # label2 = f'Eficiente'
         # labels.append((label1, label2))
-        labels = [30, 150, 500]
-        # labels = [30, 150, 450]
+        # labels = [100, 300, 600]
+        labels = [30, 150, 450]
 
     x = np.arange(3)  # três agrupamentos
     largura = 0.35
@@ -49,17 +51,19 @@ def plotar_comparacoes_pares(arquivos, modo):
     for bar in barras1:
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + max(ics)*0.05,
-                f'{height:.2f}', ha='center', va='bottom', fontsize=9)
+                f'{height:.2f}', ha='center', va='bottom', fontsize=14)
 
     for bar in barras2:
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height + max(ics)*0.05,
-                f'{height:.2f}', ha='center', va='bottom', fontsize=9)
+                f'{height:.2f}', ha='center', va='bottom', fontsize=14)
 
     ax.set_ylabel(nome_y)
-    ax.set_title(f'Comparação de {nome_y} entre Abordagens\nCiclistas = 150, Variando Pista')
+    # ax.set_title(f'Comparação de {nome_y} entre Abordagens\n100 Ciclistas, Variando Pista')
+    ax.set_title(f'Comparação de {nome_y} entre Abordagens\nPista = 100m, Variando Ciclistas')
     ax.set_xticks(x)
-    ax.set_xticklabels([f'Pista de {i}m' for i in labels])
+    ax.set_xticklabels([f'{i} Ciclistas' for i in labels])
+    # ax.set_xticklabels([f'Pista de {i}m' for i in labels])
     # ax.set_xticklabels([f'{l1} vs {l2}' for l1, l2 in labels])
     ax.legend()
     plt.tight_layout()
