@@ -1,6 +1,8 @@
 #ifndef EP2_H
 #define EP2_H
 
+
+// ======================== INCLUDES =======================
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +11,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdlib.h>
+
 
 // ======================== STRUCTS ========================
 typedef struct Node {
@@ -60,18 +63,26 @@ void copy_dynamic(DynamicArray* from, DynamicArray* to);    // Copia um vetor di
 #define POS_VAZIA -1     // Valor que indica uma posição sem ciclista
 
 
+// ================= FUNÇÕES CONCORRENTES ==================
+void move_ciclista(Ciclista* cic, int x, int y); // Move um ciclista para uma posição da pista (assume mutex trancado)
+void* ciclista(void* arg);                       // Thread principal dos ciclistas
+
+
 // ================= FUNÇÕES COORDENADORAS =================
-void destroi_ciclista(Ciclista* cic);
-void verifica_destruicoes();
-void adiciona_ultimos_volta();
-void resultados_finais();
-int conta_espaco();
-void mostrar_debug();
-void mostrar_informacoes();
-void gerar_ordem_aleatoria(int* vetor, int n);
-void posicoes_iniciais();
-void zera_vetores();
-void coordenador();
+void destroi_ciclista(Ciclista* cic); // Atualiza variáveis que sinalizam a eliminação de um ciclista
+void verifica_destruicoes();          // Gerenciador das condições de eliminação (volta par e quebra)
+void adiciona_ultimos_volta();        // Dá um push de blocos de ciclistas que completaram voltas simultaneamente
+void resultados_finais();             // Impressões de ranking e ciclistas quebrados
+void mostrar_debug();                 // Impressão de todas as posições da pista
+void mostrar_informacoes();           // Quando alguma volta é finalizada ou alguma quebra ocorre, faz a impressão necessária
+void coordenador();                   // Função principal do programa
+
+
+// ===================== FUNÇÕES GERAIS ====================
+int conta_espaco();                            // Verifica o espaço necessário entre cada posição na impressão do debug                
+void gerar_ordem_aleatoria(int* vetor, int n); // Embaralhamento de um vetor de n posições
+void posicoes_iniciais();                      // Determina as posições iniciais dos ciclistas, aleatoriamente dentro de um agrupamento
+void zera_vetores();                           // Reinicializa os valores de alguns vetores
 
 
 #endif // EP2_H

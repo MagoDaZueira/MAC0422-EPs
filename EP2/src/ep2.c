@@ -678,7 +678,7 @@ void posicoes_iniciais() {
     free(ordem);
 }
 
-// Reinicializa os valores de vetores
+// Reinicializa os valores de alguns vetores
 void zera_vetores() {
     for (int i = 0; i < FAIXAS; i++) {
         qtde_faixa[i] = 0;
