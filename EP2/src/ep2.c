@@ -617,7 +617,11 @@ void mostrar_debug() {
 }
 
 unsigned int indice_quebrados = 0; // Índice do próximo ciclista quebrado a ser impresso
+
 // Quando alguma volta é finalizada ou alguma quebra ocorre, faz a impressão necessária
+// Perceba que, aqui, por "volta finalizada" entendi quando o 1o de uma dada volta a acaba,
+// já que fazê-lo quando o último finaliza geraria múltiplas impressões de uma vez, o que,
+// já que imprimimos a posição de todos, levaria a informações repetidas, o que é estranho
 void mostrar_informacoes() {
     // Se vai ocorrer uma impressão, mostra o tempo
     if (!is_stack_empty(acabaram_prox_volta) || indice_quebrados < quebrados.size)
