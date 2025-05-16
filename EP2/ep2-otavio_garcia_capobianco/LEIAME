@@ -1,0 +1,21 @@
+Neste EP, foi implementado um simulador de uma competição de ciclismo, utilizando conceitos de programação concorrente.
+
+Primeiramente, descompacte o .tar.gz.
+
+Existe um único arquivo .c (ep2.c) a ser compilado.
+Para gerar o executável, no terminal, estando no mesmo diretório em que os arquivos estão, basta digitar make.
+Isso criará um executável ep2. Para executá-lo, deve-se realizar:
+
+./ep2 d k <i|e>(modo) -debug(opcional)
+
+Onde os argumentos são:
+d - Tamanho da pista, em metros,
+k - Quantidade de ciclistas,
+modo - <i> para a abordagem ingênua e <e> para a eficiente,
+-debug - Opcional. Caso incluso, o programa mostra as posições dos ciclistas a cada passo do relógio virtual.
+
+Temos também as restrições:
+100 <= d <= 2500
+5 <= k <= 5*d
+
+O programa supõe que está rodando num sistema GNU/Linux.
