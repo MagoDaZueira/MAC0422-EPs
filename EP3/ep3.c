@@ -12,6 +12,9 @@ EXERCÍCIO-PROGRAMA: EP3
 #define UNIDADES_NA_LINHA 16 // Unidades de alocação numa linha
 #define TAM_UNIDADE 4        // Tamanho em caracteres da unidade de alocação
 
+/* ==========================================================
+   ================= MANIPULAÇÃO DE ARQUIVOS ================
+   ========================================================== */
 // Escreve um valor inteiro em uma posição de um arquivo .pgm
 void escreve_posicao(FILE* arquivo, int posicao, int valor) {
     // Vai para o início do arquivo
@@ -40,6 +43,15 @@ void escreve_posicao(FILE* arquivo, int posicao, int valor) {
     }
 }
 
+/* ==========================================================
+   ================= ALGORITMOS DE ALOCAÇÃO =================
+   ========================================================== */
+
+int first_fit(FILE* memoria, int unidades);
+int next_fit(FILE* memoria, int unidades);
+int best_fit(FILE* memoria, int unidades);
+int worst_fit(FILE* memoria, int unidades);
+
 // Cria uma cópia de um arquivo
 void copia_arquivo(char* original, char* copia) {
     FILE* arq_original = fopen(original, "r");
@@ -53,6 +65,53 @@ void copia_arquivo(char* original, char* copia) {
 
     fclose(arq_original);
     fclose(arq_copia);
+}
+
+void gerenciador(int algoritmo, char* trace, char* saida) {
+    FILE* arq_trace = fopen(trace, "r");
+    FILE* arq_memoria = fopen(saida, "r+");
+    char linha[16];
+    int impossiveis = 0;
+    
+    while (fgets(linha, sizeof(linha), arq_trace)) {
+        char parte1[6], parte2[6];
+        sscanf(linha, "%6s %6s", parte1, parte2);
+
+        int vai_compactar = parte2[0] == 'C';
+
+        if (vai_compactar) {
+            compactar(arq_memoria);
+        }
+        else {
+            int linha_atual = atoi(parte1);
+            int unidades = atoi(parte2);
+            int conseguiu;
+
+            switch (algoritmo) {
+            case 1:
+                conseguiu = first_fit(arq_memoria, unidades);
+                break;
+            case 2:
+                conseguiu = next_fit(arq_memoria, unidades);
+                break;
+            case 3:
+                conseguiu = best_fit(arq_memoria, unidades);
+                break;
+            default:
+                conseguiu = worst_fit(arq_memoria, unidades);
+                break;
+            }
+            if (!conseguiu) {
+                printf("%d\n", linha_atual);
+                impossiveis++;
+            }
+        }
+    }
+
+    printf("%d\n", impossiveis);
+
+    fclose(arq_trace);
+    fclose(arq_memoria);
 }
 
 int main(int argc, char *argv[]) {
