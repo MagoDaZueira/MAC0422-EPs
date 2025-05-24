@@ -11,6 +11,7 @@ EXERCÍCIO-PROGRAMA: EP3
 #define TAM_LINHA 64         // Quantia de caracteres numa linha
 #define UNIDADES_NA_LINHA 16 // Unidades de alocação numa linha
 #define TAM_UNIDADE 4        // Tamanho em caracteres da unidade de alocação
+#define TAM_ARQUIVO 65536    // Tamanho do arquivo em unidades de alocação
 
 /* ==========================================================
    ================= MANIPULAÇÃO DE ARQUIVOS ================
@@ -43,14 +44,37 @@ void escreve_posicao(FILE* arquivo, int posicao, int valor) {
     }
 }
 
-/* ==========================================================
-   ================= ALGORITMOS DE ALOCAÇÃO =================
-   ========================================================== */
+// Lê um valor inteiro de uma posição de um arquivo .pgm
+int le_posicao(FILE* arquivo, int posicao) {
+    // Vai para o início do arquivo
+    rewind(arquivo);
 
-int first_fit(FILE* memoria, int unidades);
-int next_fit(FILE* memoria, int unidades);
-int best_fit(FILE* memoria, int unidades);
-int worst_fit(FILE* memoria, int unidades);
+    // Pula cabeçalho
+    for (int i = 0; i < LINHAS_INICIO; i++) {
+        while (fgetc(arquivo) != '\n') continue;
+    }
+
+    // Início das unidades
+    int offset = ftell(arquivo);
+
+    // Pula as linhas e unidades antes da posição
+    offset += TAM_LINHA * (posicao / UNIDADES_NA_LINHA);
+    offset += TAM_UNIDADE * (posicao % UNIDADES_NA_LINHA);
+
+    // Vai para a posição
+    fseek(arquivo, offset, SEEK_SET);
+
+    // Lê os 3 caracteres do bloco
+    char bloco[4];
+    if (fread(bloco, 1, 3, arquivo) != 3) {
+        fprintf(stderr, "Erro ao ler bloco na posição %d\n", posicao);
+        return -1;
+    }
+    bloco[3] = '\0';
+
+    // Converte para inteiro (ignorando espaços)
+    return atoi(bloco);
+}
 
 // Cria uma cópia de um arquivo
 void copia_arquivo(char* original, char* copia) {
@@ -66,6 +90,81 @@ void copia_arquivo(char* original, char* copia) {
     fclose(arq_original);
     fclose(arq_copia);
 }
+
+/* ==========================================================
+   ================= ALGORITMOS DE ALOCAÇÃO =================
+   ========================================================== */
+
+void preenche_memoria(FILE* memoria, int inicio, int unidades) {
+    int fim = inicio + unidades;
+    for (int i = inicio; i < fim; i++) {
+        escreve_posicao(memoria, i, 0);
+    }
+}
+
+int first_fit(FILE* memoria, int unidades) {
+    int tamanho_atual = 0; // Tamanho de unidades livres contínuas atual
+    int inicio_bloco = -1; // Índice de início das unidades livres contínuas
+
+    // Itera sobre todas as unidades de alocação, do início
+    for (int i = 0; i < TAM_ARQUIVO; i++) {
+        // Ocupada
+        if (le_posicao(memoria, i) == 0) {
+            tamanho_atual = 0;
+            continue;
+        }
+        // Livre
+        // Novo bloco contínuo
+        if (tamanho_atual == 0) inicio_bloco = i;
+        // Incrementa contagem contínua e verifica se achou um bloco grande o suficiente
+        tamanho_atual++;
+        if (tamanho_atual >= unidades) {
+            // Achou uma posição possível. Preenche ela e finaliza a execução
+            preenche_memoria(memoria, inicio_bloco, unidades);
+            return 1; // Sucesso
+        }
+    }
+    return 0; // Não conseguiu
+}
+
+int ultima_posicao = 0;
+int next_fit(FILE* memoria, int unidades) {
+    int tamanho_atual = 0; // Tamanho de unidades livres contínuas atual
+    int inicio_bloco = -1; // Índice de início das unidades livres contínuas
+
+    // Itera sobre todas as unidades de alocação,
+    // a partir da posição à direita da última alocada
+    int i = ultima_posicao;
+    int passos = TAM_ARQUIVO;
+    while (passos--) {
+        // Ocupada
+        if (le_posicao(memoria, i) == 0) {
+            tamanho_atual = 0;
+        }
+        // Livre
+        else {
+            // Novo bloco contínuo
+            if (tamanho_atual == 0) inicio_bloco = i;
+            // Incrementa contagem contínua e verifica se achou um bloco grande o suficiente
+            tamanho_atual++;
+            if (tamanho_atual >= unidades) {
+                // Achou uma posição possível. Preenche ela e finaliza a execução
+                preenche_memoria(memoria, inicio_bloco, unidades);
+                ultima_posicao = (i + 1) % TAM_ARQUIVO;
+                return 1; // Sucesso
+            }
+        }
+        // Incrementa circularmente, zerando a contagem de contínuos ao dar a volta
+        i = (i + 1) % TAM_ARQUIVO;
+        if (i == 0) tamanho_atual = 0;
+    }
+    return 0; // Não conseguiu
+}
+
+int best_fit(FILE* memoria, int unidades) {return 0;}
+int worst_fit(FILE* memoria, int unidades) {return 0;}
+void compactar(FILE* memoria) {return;}
+
 
 void gerenciador(int algoritmo, char* trace, char* saida) {
     FILE* arq_trace = fopen(trace, "r");
@@ -115,16 +214,16 @@ void gerenciador(int algoritmo, char* trace, char* saida) {
 }
 
 int main(int argc, char *argv[]) {
-    char* entrada = argv[1];
-    char* trace = argv[2];
-    char* saida = argv[3];
+    int algoritmo = atoi(argv[1]);
+    char* entrada = argv[2];
+    char* trace = argv[3];
+    char* saida = argv[4];
 
     copia_arquivo(entrada, saida);
 
     FILE* arq_saida = fopen(saida, "r+");
 
-    escreve_posicao(arq_saida, 15, 254);
-    escreve_posicao(arq_saida, 0, 2);
+    gerenciador(algoritmo, trace, saida);
 
     return 0;
 }
