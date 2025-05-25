@@ -103,7 +103,7 @@ void preenche_memoria(FILE* memoria, int inicio, int unidades) {
 }
 
 int first_fit(FILE* memoria, int unidades) {
-    int tamanho_atual = 0; // Tamanho de unidades livres contínuas atual
+    int tamanho_atual = 0; // Quantidade de unidades livres contínuas atual
     int inicio_bloco = -1; // Índice de início das unidades livres contínuas
 
     // Itera sobre todas as unidades de alocação, do início
@@ -129,10 +129,10 @@ int first_fit(FILE* memoria, int unidades) {
 
 int ultima_posicao = 0;
 int next_fit(FILE* memoria, int unidades) {
-    int tamanho_atual = 0; // Tamanho de unidades livres contínuas atual
+    int tamanho_atual = 0; // Quantidade de unidades livres contínuas atual
     int inicio_bloco = -1; // Índice de início das unidades livres contínuas
 
-    // Itera sobre todas as unidades de alocação,
+    // Itera sobre todas as unidades de alocação circularmente,
     // a partir da posição à direita da última alocada
     int i = ultima_posicao;
     int passos = TAM_ARQUIVO;
@@ -161,9 +161,99 @@ int next_fit(FILE* memoria, int unidades) {
     return 0; // Não conseguiu
 }
 
-int best_fit(FILE* memoria, int unidades) {return 0;}
-int worst_fit(FILE* memoria, int unidades) {return 0;}
-void compactar(FILE* memoria) {return;}
+int best_fit(FILE* memoria, int unidades) {
+    int tamanho_atual = 0; // Quantidade de unidades livres contínuas atual
+    int inicio_bloco = -1; // Índice de início das unidades livres contínuas
+
+    // Gerência do espaço escolhido (inicializado com valor grande arbitrário)
+    int melhor_tamanho_bloco = 100000; // Quantidade de unidades livres contínuas do melhor bloco
+    int melhor_inicio_bloco = -1;      // Índice de inínio do melhor bloco
+
+    // Itera sobre todas as unidades de alocação, do início
+    for (int i = 0; i < TAM_ARQUIVO; i++) {
+        // Ocupada
+        if (le_posicao(memoria, i) == 0) {
+            // Avalia se o bloco que acabou agora é o melhor
+            if (tamanho_atual >= unidades && tamanho_atual < melhor_tamanho_bloco) {
+                melhor_tamanho_bloco = tamanho_atual;
+                melhor_inicio_bloco = inicio_bloco;
+            }
+            tamanho_atual = 0;
+            continue;
+        }
+        // Livre
+        if (tamanho_atual == 0) inicio_bloco = i; // Novo bloco contínuo
+        tamanho_atual++; // Incrementa contagem contínua
+    }
+
+    // Encontrou espaço válido
+    if (melhor_inicio_bloco != -1) {
+        preenche_memoria(memoria, melhor_inicio_bloco, unidades);
+        return 1;
+    }
+    return 0; // Não conseguiu
+}
+
+int worst_fit(FILE* memoria, int unidades) {
+    int tamanho_atual = 0; // Tamanho de unidades livres contínuas atual
+    int inicio_bloco = -1; // Índice de início das unidades livres contínuas
+
+    // Gerência do espaço escolhido (inicializado com valor menor que 0 arbitrário)
+    int melhor_tamanho_bloco = -1; // Quantidade de unidades livres contínuas do melhor bloco
+    int melhor_inicio_bloco = -1;  // Índice de inínio do melhor bloco
+
+    // Itera sobre todas as unidades de alocação, do início
+    for (int i = 0; i < TAM_ARQUIVO; i++) {
+        // Ocupada
+        if (le_posicao(memoria, i) == 0) {
+            // Avalia se o bloco que acabou agora é o melhor
+            // Abaixo está a única diferença entre este e o best fit: trocamos "<" por ">"
+            if (tamanho_atual >= unidades && tamanho_atual > melhor_tamanho_bloco) {
+                melhor_tamanho_bloco = tamanho_atual;
+                melhor_inicio_bloco = inicio_bloco;
+            }
+            tamanho_atual = 0;
+            continue;
+        }
+        // Livre
+        if (tamanho_atual == 0) inicio_bloco = i; // Novo bloco contínuo
+        tamanho_atual++; // Incrementa contagem contínua
+    }
+
+    // Encontrou espaço válido
+    if (melhor_inicio_bloco != -1) {
+        preenche_memoria(memoria, melhor_inicio_bloco, unidades);
+        return 1;
+    }
+    return 0; // Não conseguiu
+}
+
+void compactar(FILE* memoria) {
+    int pos_livre = 0;
+    int pos_ocupada;
+    
+    // Queremos garantir que pos_livre é sempre um valor 255
+    while (pos_livre < TAM_ARQUIVO && le_posicao(memoria, pos_livre) == 0) pos_livre++;
+    if (pos_livre == TAM_ARQUIVO) return;
+
+    // Roda até compactar tudo
+    // Garantimos que todas as posições atrás de pos_livre são 0, ocupadas
+    while (1) {
+        // pos_ocupada parte de pos_livre até achar uma posição de fato ocupada
+        pos_ocupada = pos_livre;
+        while (pos_ocupada < TAM_ARQUIVO && le_posicao(memoria, pos_ocupada) == 255) pos_ocupada++;
+
+        // Não há mais memória ocupada à frente de pos_livre: acabou a compactação
+        if (pos_ocupada == TAM_ARQUIVO) return;
+
+        // Com pos_livre partindo do início do espaço vazio, o pos_ocupada do início do ocupado,
+        // Preenchemos as livres e liberamos as ocupadas, uma a uma
+        while (pos_ocupada < TAM_ARQUIVO && le_posicao(memoria, pos_ocupada) == 0) {
+            escreve_posicao(memoria, pos_livre, 0); pos_livre++;
+            escreve_posicao(memoria, pos_ocupada, 255); pos_ocupada++;
+        }
+    }
+}
 
 
 void gerenciador(int algoritmo, char* trace, char* saida) {
