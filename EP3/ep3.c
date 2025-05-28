@@ -158,6 +158,20 @@ int next_fit(FILE* memoria, int unidades) {
         i = (i + 1) % TAM_ARQUIVO;
         if (i == 0) tamanho_atual = 0;
     }
+
+    // Vai até o fim do bloco livre contínuo em que a posição original estava
+    // Caso tal posição não esteja no início do bloco, poderíamos ignorar um espaço válido
+    if (tamanho_atual == 0) inicio_bloco = i;
+    while (i < TAM_ARQUIVO && le_posicao(memoria, i) != 0) {
+        tamanho_atual++;
+        if (tamanho_atual >= unidades) {
+            // Achou uma posição possível. Preenche ela e finaliza a execução
+            preenche_memoria(memoria, inicio_bloco, unidades);
+            ultima_posicao = (i + 1) % TAM_ARQUIVO;
+            return 1; // Sucesso
+        }
+    }
+
     return 0; // Não conseguiu
 }
 
@@ -310,8 +324,6 @@ int main(int argc, char *argv[]) {
     char* saida = argv[4];
 
     copia_arquivo(entrada, saida);
-
-    FILE* arq_saida = fopen(saida, "r+");
 
     gerenciador(algoritmo, trace, saida);
 
