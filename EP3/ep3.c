@@ -170,6 +170,7 @@ int next_fit(FILE* memoria, int unidades) {
             ultima_posicao = (i + 1) % TAM_ARQUIVO;
             return 1; // Sucesso
         }
+        i++;
     }
 
     return 0; // Não conseguiu
