@@ -271,25 +271,32 @@ void compactar(FILE* memoria) {
 
 
 void gerenciador(int algoritmo, char* trace, char* saida) {
-    FILE* arq_trace = fopen(trace, "r");
-    FILE* arq_memoria = fopen(saida, "r+");
-    char linha[16];
-    int impossiveis = 0;
+    FILE* arq_trace = fopen(trace, "r");    // Arquivo de trace
+    FILE* arq_memoria = fopen(saida, "r+"); // Arquivo .pgm gerado
+    char linha[16]; // Buffer para ler o trace
+    int impossiveis = 0; // Contagem de pedidos de alocação não concretizados
     
+    // Loop principal do programa, cada iteração abordando uma linha do trace
     while (fgets(linha, sizeof(linha), arq_trace)) {
-        char parte1[6], parte2[6];
-        sscanf(linha, "%6s %6s", parte1, parte2);
+        // Guarda as informações adquiridas na linha do trace
+        char parte1[5], parte2[10];
+        sscanf(linha, "%5s %10s", parte1, parte2);
 
+        // A segunda parte da linha começa com C somente se queremos compactar
         int vai_compactar = parte2[0] == 'C';
 
+        // Caso em que compactaremos a memória
         if (vai_compactar) {
             compactar(arq_memoria);
         }
-        else {
-            int linha_atual = atoi(parte1);
-            int unidades = atoi(parte2);
-            int conseguiu;
 
+        // Caso em que tentaremos alocar memória
+        else {
+            int linha_atual = atoi(parte1); // Valor l da linha atual
+            int unidades = atoi(parte2);    // Quantas unidades alocar
+            int conseguiu; // Registrará se foi possível alocar
+
+            // Escolhe o algoritmo adequado, de acordo com o argumento 
             switch (algoritmo) {
             case 1:
                 conseguiu = first_fit(arq_memoria, unidades);
@@ -304,6 +311,7 @@ void gerenciador(int algoritmo, char* trace, char* saida) {
                 conseguiu = worst_fit(arq_memoria, unidades);
                 break;
             }
+            // Caso não tenha conseguido alocar, imprime o l
             if (!conseguiu) {
                 printf("%d\n", linha_atual);
                 impossiveis++;
