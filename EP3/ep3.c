@@ -194,6 +194,8 @@ int best_fit(FILE* memoria, int unidades) {
         tamanho_atual++; // Incrementa contagem contínua
     }
 
+    // Caso a última posição esteja livre,
+    // o último intervalo livre não seria considerado sem isso
     if (le_posicao(memoria, TAM_ARQUIVO-1) == 255) {
         if (tamanho_atual >= unidades && tamanho_atual < melhor_tamanho_bloco) {
             melhor_tamanho_bloco = tamanho_atual;
@@ -235,6 +237,8 @@ int worst_fit(FILE* memoria, int unidades) {
         tamanho_atual++; // Incrementa contagem contínua
     }
 
+    // Caso a última posição esteja livre,
+    // o último intervalo livre não seria considerado sem isso
     if (le_posicao(memoria, TAM_ARQUIVO-1) == 255) {
         if (tamanho_atual >= unidades && tamanho_atual > melhor_tamanho_bloco) {
             melhor_tamanho_bloco = tamanho_atual;
