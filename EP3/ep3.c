@@ -4,14 +4,7 @@ NUSP: 15482671
 EXERCÍCIO-PROGRAMA: EP3
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#define LINHAS_INICIO 3      // Cabeçalho
-#define TAM_LINHA 64         // Quantia de caracteres numa linha
-#define UNIDADES_NA_LINHA 16 // Unidades de alocação numa linha
-#define TAM_UNIDADE 4        // Tamanho em caracteres da unidade de alocação
-#define TAM_ARQUIVO 65536    // Tamanho do arquivo em unidades de alocação
+#include "ep3.h"
 
 /* ==========================================================
    ================= MANIPULAÇÃO DE ARQUIVOS ================
@@ -127,7 +120,7 @@ int first_fit(FILE* memoria, int unidades) {
     return 0; // Não conseguiu
 }
 
-int ultima_posicao = 0;
+int ultima_posicao = 0; // Registra a unidade à frente da última alocada pelo next fit
 int next_fit(FILE* memoria, int unidades) {
     int tamanho_atual = 0; // Quantidade de unidades livres contínuas atual
     int inicio_bloco = -1; // Índice de início das unidades livres contínuas
@@ -201,6 +194,13 @@ int best_fit(FILE* memoria, int unidades) {
         tamanho_atual++; // Incrementa contagem contínua
     }
 
+    if (le_posicao(memoria, TAM_ARQUIVO-1) == 255) {
+        if (tamanho_atual >= unidades && tamanho_atual < melhor_tamanho_bloco) {
+            melhor_tamanho_bloco = tamanho_atual;
+            melhor_inicio_bloco = inicio_bloco;
+        }
+    }
+
     // Encontrou espaço válido
     if (melhor_inicio_bloco != -1) {
         preenche_memoria(memoria, melhor_inicio_bloco, unidades);
@@ -233,6 +233,13 @@ int worst_fit(FILE* memoria, int unidades) {
         // Livre
         if (tamanho_atual == 0) inicio_bloco = i; // Novo bloco contínuo
         tamanho_atual++; // Incrementa contagem contínua
+    }
+
+    if (le_posicao(memoria, TAM_ARQUIVO-1) == 255) {
+        if (tamanho_atual >= unidades && tamanho_atual > melhor_tamanho_bloco) {
+            melhor_tamanho_bloco = tamanho_atual;
+            melhor_inicio_bloco = inicio_bloco;
+        }
     }
 
     // Encontrou espaço válido
@@ -271,10 +278,14 @@ void compactar(FILE* memoria) {
 }
 
 
+/* ==========================================================
+   ====================== FUNÇÕES MAIN ======================
+   ========================================================== */
+
 void gerenciador(int algoritmo, char* trace, char* saida) {
     FILE* arq_trace = fopen(trace, "r");    // Arquivo de trace
     FILE* arq_memoria = fopen(saida, "r+"); // Arquivo .pgm gerado
-    char linha[16]; // Buffer para ler o trace
+    char linha[16];      // Buffer para ler o trace
     int impossiveis = 0; // Contagem de pedidos de alocação não concretizados
     
     // Loop principal do programa, cada iteração abordando uma linha do trace
@@ -320,6 +331,7 @@ void gerenciador(int algoritmo, char* trace, char* saida) {
         }
     }
 
+    // Imprime a quantidade de alocações não concretizadas
     printf("%d\n", impossiveis);
 
     fclose(arq_trace);
@@ -327,13 +339,16 @@ void gerenciador(int algoritmo, char* trace, char* saida) {
 }
 
 int main(int argc, char *argv[]) {
+    // Lê os argumentos de entrada
     int algoritmo = atoi(argv[1]);
     char* entrada = argv[2];
     char* trace = argv[3];
     char* saida = argv[4];
 
+    // Cria o arquivo de output
     copia_arquivo(entrada, saida);
 
+    // Chama o loop principal
     gerenciador(algoritmo, trace, saida);
 
     return 0;
