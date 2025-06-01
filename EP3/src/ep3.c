@@ -327,9 +327,9 @@ void gerenciador(int algoritmo, char* trace, char* saida) {
                 conseguiu = worst_fit(arq_memoria, unidades);
                 break;
             }
-            // Caso não tenha conseguido alocar, imprime o l
+            // Caso não tenha conseguido alocar, imprime o l e o m
             if (!conseguiu) {
-                printf("%d\n", linha_atual);
+                printf("%d %d\n", linha_atual, unidades);
                 impossiveis++;
             }
         }
