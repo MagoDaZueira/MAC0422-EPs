@@ -5,10 +5,10 @@
 #NA MESMA PASTA E NÃO DENTRO DA PASTA!
 
 #Ajuste esse maninho de acordo com o especificado em cada EP.
-CONTEUDO_ESPERADO=(ep2.c ep2.h LEIAME Makefile slides-ep2.pdf)
+CONTEUDO_ESPERADO=(ep3.c ep3.h LEIAME Makefile slides-ep3.pdf trace-firstfit trace-nextfit trace-bestfit trace-worstfit)
 
 #Configurações da Pasta e do nome do EP.
-NUM_EP="2" #Alterar isso conforme o número do EP
+NUM_EP="3" #Alterar isso conforme o número do EP
            #Garantir que o número do EP esteja de acordo com o nome da pasta pro tar não fazer meida.
 NOME="otavio_garcia_capobianco"
 DIR="ep${NUM_EP}-${NOME}"

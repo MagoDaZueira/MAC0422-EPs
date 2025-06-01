@@ -1,0 +1,25 @@
+Neste EP, foi implementado um simulador de algoritmos de alocação de memória
+
+Primeiramente, descompacte o .tar.gz.
+
+Existe um único arquivo .c (ep3.c) a ser compilado.
+Para gerar o executável, no terminal, estando no mesmo diretório em que os arquivos estão, basta digitar make.
+Isso criará um executável ep3. Para executá-lo, deve-se realizar:
+
+./ep3 n <nome do arquivo PGM de entrada> <nome do arquivo de trace> <nome do arquivo PGM de saída>
+
+Onde os argumentos são:
+n - Algoritmo de alocação desejado:
+  - 1. First-fit
+  - 2. Next-fit
+  - 3. Best-fit
+  - 4. Worst-fit
+PGM de entrada - Estado inicial da "memória"
+arquivo de trace - Pedidos de alocação de memória e compactação
+PGM de saída - Nome do arquivo a ser criado no qual serão feitas as manipulações de memória 
+
+Restrições:
+O PGM de entrada deve ter formato 256x256, com valores 0 para ocupado e 255 para livre
+O arquivo de trace deve ter, em cada linha, dois inteiros separados por espaço, sendo o primeiro o identificador da linha e o segundo a quantidade de memória desejada. Supõe-se que este arquivo tenha entre 1 e 2000 linhas.
+
+O programa supõe que está rodando num sistema GNU/Linux.
