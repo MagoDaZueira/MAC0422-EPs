@@ -17,7 +17,7 @@
 #include <errno.h>
 
 #define MAXLINE 100
-#define LISTENQ 128
+#define LISTENQ 512
 
 #define MAXFD 64
 

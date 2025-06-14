@@ -31,6 +31,8 @@ int main(int argc, char **argv) {
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sun_family = AF_UNIX;
     strcpy(servaddr.sun_path,SOCKET_NAME);
+
+    // FILE* debug = fopen("teste", "w");
     
     if (connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr))) {
         fprintf(stderr,"Erro no connect :-(\n");
@@ -38,6 +40,7 @@ int main(int argc, char **argv) {
     }
     else
         fprintf(stderr,"Passou pelo connect...\n");
+        // fprintf(debug, "Passou pelo connect...\n");
 
     bye=0;
     while (!bye) {
