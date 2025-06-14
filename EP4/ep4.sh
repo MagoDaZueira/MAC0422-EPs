@@ -12,8 +12,8 @@ for file in $SERVER_NAMES $CLIENT_NAMES; do
     gcc ep4-clientes+servidores/$file.c -o /tmp/$file -pthread
 done
 
-times_file="/tmp/ep4-resultados-${CLIENT_NUM}.data"
-echo -n "" > "$times_file"
+DATA_FILE="/tmp/ep4-resultados-${CLIENT_NUM}.data"
+echo -n "" > "$DATA_FILE"
 
 for size in $FILE_SIZES; do
     line=$(printf "%02d" "$size")
@@ -36,6 +36,7 @@ for size in $FILE_SIZES; do
             is_unix=0
         fi
 
+        echo ">>>>>>> Fazendo ${CLIENT_NUM} clientes ecoarem um arquivo de: ${size}MB..."
         pids=()
         for i in $(seq 1 $CLIENT_NUM); do
             if [[ $is_unix -eq 1 ]]; then
@@ -51,10 +52,20 @@ for size in $FILE_SIZES; do
             wait $pid
         done
 
-        pkill -f -15 /tmp/$server
 
-        first_accept=$(journalctl -q --since="$start" | grep "$server" | grep "accept" | head -n 1)
-        last_exit=$(journalctl -q --since="$start" | grep "$server" | grep "exit" | tail -n 1)
+        echo "Verificando os instantes de tempo no journald..."
+
+        server_logs=$(journalctl -q --since="$start" | grep "$server")
+        first_accept=$(echo "$server_logs" | grep "accept" | head -n 1)
+        all_exits=$(echo "$server_logs" | grep "exit")
+        last_exit=$(echo "$all_exits" | tail -n 1)
+
+        if [ "$(echo "$all_exits" | wc -l)" -ne "$CLIENT_NUM" ]; then
+            echo "Erro: nem todos os clientes encerraram a conexão com ${server}"
+            exit 1
+        fi
+
+        echo ">>>>>>> ${CLIENT_NUM} clientes encerraram a conexão"
 
         accept_date=$(echo "$first_accept" | awk '{print $1, $2, $3}')
         exit_date=$(echo "$last_exit" | awk '{print $1, $2, $3}')
@@ -65,7 +76,47 @@ for size in $FILE_SIZES; do
         time_spent=$(dateutils.ddiff "$accept_date" "$exit_date" -f "%0M:%0S")
 
         line+=" $time_spent"
+
+        echo ">>>>>>> Tempo para servir os ${CLIENT_NUM} clientes com o ${server}: ${time_spent}"
+
+        echo "Enviando um sinal 15 para o servidor ${server}..."
+
+        pkill -f -15 /tmp/$server
     done
 
-    echo "$line" >> "$times_file"
+    echo "$line" >> "$DATA_FILE"
+
+    rm /tmp/${size}MB.txt
 done
+
+echo -n ">>>>>>> Gerando o gráfico de ${CLIENT_NUM} clientes com arquivos de: "
+for size in ${FILE_SIZES[@]}; do
+    echo -n "${size}MB "
+done
+echo
+
+GPI_FILE="/tmp/graficos.gpi"
+
+echo "set ydata time" > $GPI_FILE
+echo "set timefmt \"%M:%S\"" >> $GPI_FILE
+echo "set format y \"%M:%S\"" >> $GPI_FILE
+echo "set xlabel \"Dados transferidos por cliente (MB)\"" >> $GPI_FILE
+echo "set ylabel \"Tempo para atender ${CLIENT_NUM} clientes concorrentes\"" >> $GPI_FILE
+echo "set term pdfcairo" >> $GPI_FILE
+echo "set output \"ep4-resultados-${CLIENT_NUM}.pdf\"" >> $GPI_FILE
+echo "set grid" >> $GPI_FILE
+echo "set key top left" >> $GPI_FILE
+echo "plot \"${DATA_FILE}\" using 1:4 with linespoints title \"Sockets da Internet: Mux de E/S\",\\" >> $GPI_FILE
+echo "     \"${DATA_FILE}\" using 1:3 with linespoints title \"Sockets da Internet: Threads\",\\" >> $GPI_FILE
+echo "     \"${DATA_FILE}\" using 1:2 with linespoints title \"Sockets da Internet: Processos\",\\" >> $GPI_FILE
+echo "     \"${DATA_FILE}\" using 1:5 with linespoints title \"Sockets Unix: Threads\"" >> $GPI_FILE
+
+gnuplot $GPI_FILE
+
+
+for file in $SERVER_NAMES $CLIENT_NAMES; do
+    rm /tmp/$file
+done
+rm $DATA_FILE
+rm $GPI_FILE
+rm /tmp/uds-echo.sock
