@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# # # # # # # # # # # # # # # # # #
+# NOME: Otávio Garcia Capobianco  #
+# NUSP: 15482671                  #
+# EXERCÍCIO-PROGRAMA: EP4         #
+# # # # # # # # # # # # # # # # # #
+
 CLIENT_NUM=$1
 FILE_SIZES=${@:2}
 
@@ -89,9 +95,9 @@ for size in $FILE_SIZES; do
     rm /tmp/${size}MB.txt
 done
 
-echo -n ">>>>>>> Gerando o gráfico de ${CLIENT_NUM} clientes com arquivos de: "
+echo -n ">>>>>>> Gerando o gráfico de ${CLIENT_NUM} clientes com arquivos de:"
 for size in ${FILE_SIZES[@]}; do
-    echo -n "${size}MB "
+    echo -n " ${size}MB"
 done
 echo
 
@@ -120,3 +126,5 @@ done
 rm $DATA_FILE
 rm $GPI_FILE
 rm /tmp/uds-echo.sock
+
+exit 0
