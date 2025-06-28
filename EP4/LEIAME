@@ -1,0 +1,20 @@
+Link do vídeo de demonstração: https://youtu.be/xKBGrMtzlJo
+
+Este projeto consiste na simulação de IPC, rodando servidores e clientes de echo, e gerando gráficos que permitam conclusões sobre a eficiência de cada tipo de servidor
+
+Primeiramente, descompacte o .tar.gz.
+
+Existe um único script .sh (ep4.sh) a ser executado.
+Para fazê-lo, realize:
+
+./ep4.sh clientes arquivo1 ... arquivoN
+
+Onde os argumentos são:
+clientes - Quantidade de clientes que contatarão cada servidor
+arquivoX - Qualquer número de repetições desse argumento. Cada um é o tamanho, em MB, que cada cliente tentará enviar ao servidor.
+
+Restrições:
+Todos os argumentos devem ser números inteiros positivos
+Deve haver ao menos uma instância de arquivoX
+
+O programa supõe que está rodando num sistema GNU/Linux.
